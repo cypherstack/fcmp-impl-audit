@@ -1,0 +1,141 @@
+\ProvidesPackage{cypherstack}
+% Packages
+\RequirePackage[framed]{ntheorem}
+\RequirePackage[margin=1in]{geometry}
+\RequirePackage{algorithm, algpseudocode, color, tcolorbox,titling, lipsum, framed, colonequals, amsmath, amssymb, amsfonts, setspace, graphicx, titlepic, float, etoolbox, lmodern, tabstackengine, fancyhdr, listings, xcolor, chronology, fancyvrb, cprotect, tabularx, caption, hyperref, cleveref, lastpage, calc, adjustbox, chngpage, pifont}
+\RequirePackage[table]{xcolor}
+\RequirePackage[framemethod=TikZ]{mdframed}
+\RequirePackage[exports]{adjustbox}
+\RequirePackage[margin=1in]{geometry}
+\RequirePackage[affil-it]{authblk} 
+\RequirePackage[english]{babel}
+\RequirePackage[utf8]{inputenc}
+
+%Document Formating
+% \onehalfspacing
+\setstretch{1.25}
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{}
+\lhead{}
+\rfoot{Page \thepage}
+
+%Title Page
+\title{FCMP Function Analysis}
+\date{}
+\author{}
+
+
+% Custom Commands
+
+%Reference in Document
+\hypersetup{
+    colorlinks,
+    citecolor=black,
+    filecolor=black,
+    linkcolor=black,
+    urlcolor=black
+}
+
+%TikZ
+\def\checkmark{\tikz\fill[scale=0.6][DarkGreen](0,.35) -- (.25,0) -- (1,.7) -- (.25,.15) -- cycle;}
+\def\checkmarky{\tikz\fill[scale=0.6][Amber](0,.35) -- (.25,0) -- (1,.7) -- (.25,.15) -- cycle;}
+\newcommand{\redx}{{\color{red}\ding{55}}}
+
+%Colors
+\definecolor{Amber}{HTML}{F0C14B}
+\definecolor{GoldenYellow}{HTML}{FCE34A}
+\definecolor{SkyBlue}{HTML}{46C5DD}
+\definecolor{Cerulean}{HTML}{00A2E3}
+\definecolor{CornflowerBlue}{HTML}{41B0E4}
+\definecolor{SeaGreen}{HTML}{3FBC9D}
+\definecolor{CadmiumOrange}{HTML}{F28C28}
+\definecolor{Mahogany}{HTML}{C04000}
+\definecolor{DarkGreen}{HTML}{006400}
+%Nice Definition Block
+\tcbuselibrary{theorems}
+\newtcbtheorem[number within=section, crefname={Definition}{Definition}]{df}{Definition}%
+{colback=red!5,colframe=red!45!black,fonttitle=\bfseries}{df}
+%Nice Algorithm Block
+\newtcbtheorem[number within=section, crefname={Algorithm}{Algorithm}]{algo}{Algorithm}%
+{colback=orange!5,colframe=orange!35!black,fonttitle=\bfseries}{algo}
+
+\newtcbtheorem[number within=section,crefname={Assumption}{Assumption}]{assu}{Assumption}%
+{colback=blue!5,colframe=blue!35!black,fonttitle=\bfseries}{assu}
+
+\newtcbtheorem[number within=section,crefname={Property}{Property}]{prop}{Property}%
+{colback=green!5,colframe=green!35!black,fonttitle=\bfseries}{prop}
+
+\newtcbtheorem[number within=section,crefname={Component}{Component}]{comp}{Component}%
+{colback=olive!5,colframe=olive!35!black,fonttitle=\bfseries}{comp}
+
+\newtcbtheorem[number within=section, crefname={Diagram}{Diagram}]{diag}{Diagram}%
+{colback=magenta!5,colframe=magenta!35!black,fonttitle=\bfseries}{diag}
+
+
+%Matrix Formatting Settings/Custom Matrix Commands
+\setstackEOL{;}% Row Seperator
+\setstackTAB{,}% Column Separator
+\setstacktabbedgap{1ex}% Inter-Column Gap
+\setstackgap{L}{1.0\normalbaselineskip}% Inter-Row Baselineskip
+\let\bmat\bracketMatrixstack % bmat : Bracketed Matrix
+\let\pmat\parenMatrixstack % pmat : Round Bracketed Matrix
+\let\vmat\vertMatrixstack % vmat : Absolute Value Matrix
+\let\mmat\Matrixstack % mmat : Bracketless Matrix
+
+%Boxed Theorems
+\newframedtheorem{lemm}{Lemma}[section]
+\newframedtheorem{resul}{Result}[section]
+\newframedtheorem{thm}{Theorem}[section]
+\newframedtheorem{defn}{Definition}[section]
+\newframedtheorem{prf}{Proof}[section]
+\newframedtheorem{cor}{Corollary}[section]
+\newframedtheorem{conj}{Conjecture}[section]
+
+\newcommand{\R}{\mathbb{R}} % Real Numbers Symbol
+\newcommand{\Z}{\mathbb{Z}} % Integers Symbol
+\newcommand{\Q}{\mathbb{Q}} % Rational Numbers Symbol
+\newcommand{\N}{\mathbb{N}} % Natural Numbers Symbol
+\newcommand{\ip}[2]{\left \langle {}#1,#2{} \right\rangle} % Inner Product
+\newcommand{\bb}{\blacksquare} % QED Symbol
+\newcommand{\setc}[1]{\left \{ #1 \right \}} % Set
+\newcommand{\summation}[4]{\sum_{#1 = #2}^{#3} #4}
+\newcommand{\qlim}[3]{\lim_{#1 \rightarrow #2} #3}
+\newcommand{\absval}[1]{\left| #1 \right|} % Absolute Value
+\newcommand{\norm}[1]{\left| \left| #1 \right| \right|} % Norm Bars
+\newcommand{\floor}[1]{\left \lfloor #1 \right \rfloor} % Floor Function
+\newcommand{\ceil}[1]{\left \lceil #1 \right \rceil} % Ceiling Function
+\newcommand{\setb}[2]{ \left \{ #1 \, \, : \, \, #2 \, \right \} } %Set Builder Command
+\newcommand{\uexist}{!\exists} % Unique Existence
+\newcommand{\intersection}[4]{\bigcap_{#1 = #2}^{#3} #4} % Intersection with Upper and Lower Bounds
+\newcommand{\union}[4]{\bigcup_{#1 = #2}^{#3} #4} % Intersection with Upper and Lower Bounds
+\newcommand{\integral}[3]{\int_{#1}^{#2} #3} % Integral with Upper and Lower Bounds
+\newcommand{\contradiction}{\Rightarrow \Leftarrow} % Contradiction Symbol
+\newcommand{\blackbox}{\blacksquare}
+
+% Code Environment
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+
+% To input code directly from a file, use the command \lstinputlisting[language=_]{file.ext}, where language is equal to the language used in the file, and the file is the corresponding code with the appropriate extension.

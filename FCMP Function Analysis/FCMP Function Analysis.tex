@@ -1,0 +1,1640 @@
+\documentclass[12pt,titlepage,table]{article}
+\date{}
+\usepackage[table]{xcolor}
+\usepackage{cypherstack}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+\setlength{\arrayrulewidth}{0.25mm}
+\renewcommand{\arraystretch}{1.5}
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+
+\pagestyle{fancy}
+\fancyhf{} % Clear all header and footer fields
+
+% Define line thickness (0pt to remove)
+\renewcommand{\headrulewidth}{1pt}
+\renewcommand{\headrule}{{\color{Mahogany}\hrule width\headwidth height\headrulewidth}}
+\renewcommand{\footrulewidth}{1pt}
+\renewcommand{\footrule}{{\color{Mahogany}\hrule width\headwidth height\headrulewidth}}
+
+%\fancyhead[C]{Optional Header Text}
+\fancyfoot[L]{$\mathbb{C}$\textit{ypher}$\mathbb{S}$\textit{tack}}
+%\fancyhead[L]{\includegraphics[height=.5cm]{logo.png}}
+\fancyfoot[R]{\thepage}
+
+\fancyhead[C]{
+  \begin{tikzpicture}[remember picture,overlay]
+    \node[anchor=north, xshift=0cm, yshift=-.5cm] at (current page.north) 
+    {\includegraphics[width=.5cm]{logo.png}};
+  \end{tikzpicture}
+}
+%\fancyhead[C]{\includegraphics[width=.5cm]{logo.png}}
+
+
+
+\lstset{style=mystyle}
+\setlength{\belowcaptionskip}{10pt}
+
+\newcommand{\free}[1]{{\textcolor{red}{#1}}}
+\newcommand{\luke}[1]{{\textcolor{green}{#1}}}
+\newcommand{\rigo}[1]{{\textcolor{blue}{#1}}}
+\newcommand{\josh}[1]{{\textcolor{purple}{#1}}}
+
+\begin{document}
+
+\begin{titlepage}
+    \vspace*{9em}{\centering\Huge\usefont{T1}{qzc}{m}{it}
+FCMP++ Function Analysis\par}
+\vspace{1em}
+{\hfill\itshape A comprehensive mathematical and code based}\\
+\vspace{1em}
+{\hfill\itshape review of functions for use in FCMP.}\\
+
+\begin{center}
+    Joshua $\mathbb{B}$abb \\
+    Brandon $\mathbb{G}$oodell \\
+    $\mathbb{R}$igo Salazar \\
+    $\mathbb{F}$reeman Slaughter \\
+    Luke S$\mathbb{Z}$ramowski
+\end{center}
+
+\vfill
+\begin{center}
+\includegraphics[width = 2cm]{logo.png}
+\end{center}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+\section{Structure}
+\indent \indent This document is structured with each section addressing a particular point in the audit request. Every section is structured similarly: we begin with a mathematical overview of the purpose of the code covered in each section, proceed with an analysis of all pertinent functions, then end with a section that addresses the questions included in the audit request.
+
+Each instance of a function's analysis is structured identically: 
+\begin{enumerate}
+    \item \textbf{Functionality}: This segment presents the code for the analyzed functions as written in the repository, along with a Source-to-Specification map detailing the operations contained within the function. Additionally, it includes where the code can be found in the repository.
+    
+    \item \textbf{Implementation Observations}: In this component, we include our observations surrounding the code, how it implements the underlying mathematical concepts, and any potential issues that may arise from a disconnect between the code and the math.
+    
+    \item \textbf{Edge Case Analysis}: Here, we deal with determining how the code handles extreme, rare, or impossible inputs. The purpose is mainly to determine if there are fringe cases which the function cannot handle, but additionally this analysis provides insight into potential guardrails that may need to be placed on the function.
+    % put in place if the functions are used in a context outside of its primary use.
+    
+    \item \textbf{Fuzzing Results}: Fuzzing is a compilation of results wherein the function is executed on a variety of platforms and infrastructure over a wide range of inputs, with the goal of determining if there are any purely code-based concerns to be addressed.
+    
+    \item \textbf{Conclusion}: Finally, the section conclusion will be a short determination of our professional opinions regarding if the code is fit for deployment or not. For ease of reading, a green checkmark $\checkmark$, yellow checkmark $\checkmarky$, or red x \redx \,  will be included to indicate, respectively: yes, yes with minor concerns, or no.
+\end{enumerate}
+
+If there are any additional results, we include them in a dedicated section with the relevant function. Additionally, if there is no edge case analysis section, then it should be interpreted that all relevant behavior is captured in the fuzzing results or that there were no notable interactions.
+
+\medskip
+As a convention, when code is being discussed, the first two columns we label L1 and L2. Firstly, L1 is the line location in the source code, while L2 is the code's line location in the document.
+
+\section{Constant Time}
+
+\indent \indent We note that constant-timedness is critical for the implementation of various functions utilized in FCMP++. The purpose is to ensure that timing information is not leaked during the execution of the function: as all computations run using the same amount of time regardless of input, timing analysis loses its utility. These considerations are only necessary in the case that the function inputs are private; indeed if all the information needed to initialize the function is public, then no advantage can be gained from a timing attack, so constant time is not necessary. With this in mind, the function is free to default to whichever method results in the fastest runtime.
+
+\newpage
+\section{Faster Transparent Amount Commitments}
+In this section we seek to analyze the components of the \verb+zeroCommitVartime+ process. Our focus is to determine the following:
+\begin{enumerate}
+\item Is the cryptography implementation sound?
+\item Is the cryptography implemented correctly?
+\end{enumerate}
+The first subsection will deal with the cryptographic ideas that are used in the analyzed functions, while the following subsections will answer the two questions above for the functions under consideration.
+
+\subsection{Mathematical Overview}
+\begin{df}{Pedersen Commitments}{PC}
+A \textbf{Pedersen commitment} $C$ to an amount $a$ with blinding factor $r$ is defined as:
+$$C = r \cdot G + a \cdot H$$
+where $G,H$ are both elliptic curve points such that the discrete logarithm relationship between them is unknown and presumed to be difficult to determine.
+
+\medskip
+A \textbf{zero commitment} to an amount $a$ is defined as a Pedersen Commitment with a blinding factor equal to $1$:
+$$C_{zero} = 1 \cdot G + a \cdot H$$
+\end{df}
+
+For the purpose of this PR, $G$ is the base point for ED25519 and $H$ is Monero's second generator, which is a hash of $G$.
+
+\medskip
+\begin{df}{Binary Decomposition}{BD}
+Any 64 bit unsigned integer $a$ can be uniquely represented as:
+$$a = \sum_{k =0}^{63} a_k \cdot 2^k$$
+where $a_k \in \{0,1\}$.
+\end{df}
+
+\medskip
+There are a number of different point representations that are used in the code, which are used for the sake of efficiency. In general, a point $(x,y)$ on a \textit{Twisted Edwards Curve} given by $-x^2 + y^2 = 1 + dx^2y^2$ can be represented in the following ways. For ED25519, the curve parameter is the constant $d = -\frac{121665}{121666} \pmod p$, where $p = 2^{255} - 19$.
+
+\begin{table}[htbp]
+\centering
+{\rowcolors{2}{SeaGreen!5}{SeaGreen!25}
+\begin{tabular}{| l | l | l|}
+\hline
+\textbf{Function} & \textbf{Coordinates} & \textbf{Use} \\
+\hline
+\hline
+\verb|ge_p3| & $(X: Y: Z: T)$ where & Extended Twisted Edwards Coordinates \\
+& $x = X/Z, y = Y/Z, T = (XY)/Z$ & \\
+\hline
+\verb|ge_cached| & $(Y + X: Y - X: Z: 2dT)$ & Optimized for Point Addition for \verb|ge_add| \\
+\hline
+\verb|ge_p1p1| & $(X: Y: Z: T)$ where & Output of \verb|ge_add| and \verb|ge_p3_dbl| \\
+& $x = X/Z, y = Y/T$ & Needs to be converted.\\
+\hline
+\end{tabular}}
+\end{table}
+
+\subsection{PR \#10108 - H\_Table}
+\subsubsection{Functionality}
+\indent \indent The \verb|H_Table| function returns a static table of 64 precomputed points of the form $2^i \cdot H$, in the  \verb|ge_cached| coordinate form. Explicitly:
+$$\verb|H_Table|[i] = 2^i \cdot H$$
+
+\lstinputlisting[language=C++, caption={h\_table Code}, captionpos=t]{htable.cpp}
+
+\begin{table}[htbp]
+\caption{H\_Table Source To Spec Map}
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | l | c | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+220 & 5 &\verb+H_TABLE_SIZE = 64+ & One entry per bit of \verb+uint64_t+ \\
+221 & 6 &\verb+const std::vector<ge_cached>& H_TABLE()+ &  Returns table of $2^i \cdot H$, i = 0 ... 63 \\
+229 & 11 &\verb|h_table.resize(H_TABLE_SIZE)| & Allocate 64 entries. \\
+231 & 12 & \verb+ge_p3_to_cached(&h_table.at(0), &ge_p3_H)+ & Sets \verb+H_TABLE[0] = H+. \\
+&&\textit{Converts from} \verb+ge_p3+ \textit{to} \verb+ge_cached+ \textit{form.}& \\
+232 & 13 &\verb|ge_p3 H_bit_p3 = ge_p3_H| & Sets working var = H \\
+234 & 15 & Doubling Loop & \verb+H_TABLE[i]+$ = 2 \, \cdot $ \verb+H_TABLE[i-1]+\\
+237 & 18 	&\verb+ge_p3_dbl(&H_bit_p1p1, &H_bit_p3)+ & Doubling. \textit{Output is} \verb+ge_p1p1+\\
+&&& \textit{(intermediate representation)}\\
+238 & 19 &\verb+ge_p1p1_to_p3(&H_bit_p3, &H_bit_p1p1)+ & Convert intermediate to \\
+&&&extended for next iteration.\\
+239 & 20 &\verb+ge_p3_to_cached(&h_table.at(i), &H_bit_p3)+ & Convert from extended to cached\\
+&&& for storage.\\
+243 & 24 & Meyers singleton & Thread-safe in C++11. \\
+&&&Constructed once on first call\\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\caption*{Located in rctOps.cpp}
+\end{table}
+
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+\item We note that the code utilizes all three representations presented here when running. This is since \verb+ge_add+ requires \verb+ge_p3+ and \verb+ge_cached+ to produce \verb+ge_p1p1+. The table stores \verb+ge_cached+ \textit{specifically} to avoid the per iteration conversion. The original spec simply says `add points'.
+\end{enumerate}
+
+\subsubsection{Edge Case Analysis}
+\verb+H_TABLE+ is a parameter-less Meyers singleton, so it has no input-driven edge cases of its own.  The table below records the structural invariants exercised on first call:
+
+\begin{table}[htbp]
+\centering
+{\rowcolors{2}{SkyBlue!25}{CornflowerBlue!50}
+\begin{tabular}{| p{1.8in} | p{4.3in} |}
+\hline
+\textbf{Invariant} & \textbf{Behavior} \\
+\hline
+\hline
+First call & Allocates 64 entries, computes \verb+H_TABLE[0..63]+ via the doubling loop, stores in \verb+ge_cached+ form. \\
+Subsequent calls & Returns the same \verb+const std::vector<ge_cached>&+ reference (no recomputation; thread-safe under C++11). \\
+\verb+H_TABLE[0]+ & Equals \verb+ge_p3_H+ converted to \verb+ge_cached+. \\
+\verb+H_TABLE[i]+, $1 \le i \le 63$ & Equals $2 \cdot \verb+H_TABLE+[i-1] = 2^i \cdot H$, computed via \verb+ge_p3_dbl+ then converted. \\
+\hline
+\end{tabular}}
+\end{table}
+\subsubsection{Fuzzing Results}
+\verb+H_TABLE+ is exercised indirectly by every \verb+zeroCommitVartime+ fuzz iteration: the AFL++ harness \verb+afl_zero_commit+ ran $101{,}096{,}575$ random \verb+uint64_t+ amounts on the PR-10108 branch (600\,s wall, $18{,}494$ exec/s, ASan/UBSan), with zero memory-safety findings and zero invariant violations. Because the table is built once on first call and read-only thereafter, the campaign primarily certifies correct singleton initialization across the full $64$-bit amount space.
+
+\newpage
+
+\subsection{PR \#10108 - zeroCommitVartime}
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={zeroCommitVartime Code}, captionpos=t]{zeroCommitVartime.cpp}
+\newpage
+\begin{table}[htbp]
+\caption{zeroCommitVartime Source To Spec Map}
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | l | c | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+349 & 1 &\verb+key zeroCommitVartime(xmr_amount amount)+ & Computes $C = G + a \cdot H$ \\
+350 &  & Binary search in \verb+zero_commitments[]+ &  Common Value Search. \\
+358 & 14 &\verb|ge_p3 res_ge_p3 = get_G_p3()| & Sets $C = G$\\
+359 & 2 & \verb+static_assert(...)+ & Compile-time guard:\\
+&&& amount width == table size \\
+360 & 13 &\verb|for (size_t i = 0; i < H_TABLE_SIZE; ++i)| & Iterate all 64 bits \\
+362 & 15 &\verb+if (amount & (xmr_amount(1) << i))+ & Test bit $i$. \\
+365 & 18 &\verb+ge_add(&p1p1, &res_ge_p3, &H_TABLE()[i])+ & C += $2^i \, \cdot H$ when bit $i$ is set.\\
+366 & 19 &\verb+ge_p1p1_to_p3(&res_ge_p3, &p1p1)+ & Convert result back to \verb+ge_p3+ for\\
+&&& next addition.\\
+370 & 20 &\verb+ge_p3_tobytes(res.bytes, &res_ge_p3)+ & Compress to 32-byte Edwards\\ 
+&&& encoding.\\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\caption*{Located in rctOps.cpp}
+\end{table}
+
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+\item In lines $44-218$, there is a hardcoded, sorted array of amount/commitment pairs for common Monero denominations, which are binary searched before \verb+H_Table+ runs. These values are constant and are not derived at runtime.
+\end{enumerate}
+\subsubsection{Edge Case Analysis}
+\begin{table}[htbp]
+\centering
+{\rowcolors{2}{SkyBlue!25}{CornflowerBlue!50}
+\begin{tabular}{| l | l |}
+\hline
+\textbf{Input} & \textbf{Behavior} \\
+\hline
+\hline
+Amount = $0$ & Cache hit. Returns G. \\
+Amount = $2^{32}$ & First amount that triggered the 1UL bug. Now works correctly.\\
+Amount = $2^{64} - 1$ & All 64 table entries added. Maximum execution time. \\
+Amount = $2^{63}$ & Uses \verb+H_TABLE[63]+ only. Tests the last table entry. \\
+\hline
+\end{tabular}}
+\end{table}
+
+\subsubsection{Fuzzing Results}
+The AFL++ harness \verb+afl_zero_commit+ fuzzed \verb+zeroCommitVartime+, completing $101{,}096{,}575$ iterations. For every random \verb+uint64_t+ amount the harness verified determinism (same input $\Rightarrow$ same output) and that the output decompresses as a valid Ed25519 point via \verb+ge_frombytes_vartime+.  No crashes, memory-safety findings, or invariant violations were found.  The 1UL bug class is exercised by an adversarial seed corpus that includes $a = 2^{32}$ and other powers-of-two boundaries.
+
+\subsection[Section Conclusion]{Section Conclusion \hfill \checkmark}
+All functions used for the \textit{Faster Transparent Amount Commitments} are described correctly mathematically, and implemented according to that description. As such, it is our conclusion that the above functions are fit for deployment in Monero.
+
+\newpage
+\section{Batch Inverse}
+\subsection{Mathematical Overview}
+\indent \indent The following code performs the Montgomery trick for group inversion. Instead of inverting $n$ group elements individually, it batches them together and inverts once, which still results in the inversions of each of the elements, but requires $1$ inversion and $3(n-1)$ group multiplications as opposed to $n$ costly inversions.
+
+\medskip
+The trick works as follows: let $a_1,...,a_n$ be the group elements one wishes to invert. Perform the following:
+\begin{enumerate}
+\item For each $1 \leq i \leq n$, compute the product:
+$$P_i = \prod_{k = 1}^i a_k$$
+\item Invert the product of all the elements:
+$$I_n = P_n^{-1}$$
+\item For each $1 \leq i \leq n$, compute the following:
+$$I_{i - 1} \equiv I_i \cdot a_i \, \, \, (mod \, \, \, p)$$
+$$a_i^{-1} \equiv P_{i - 1} \cdot I_i \, \, \, (mod \, \, \, p)$$
+\end{enumerate} 
+
+\medskip
+We can see that, since there are $n$ elements, Line 1 requires $n-1$ multiplications (since $P_1 = a_1$). Line 2 is the expensive operation, requiring $1$ inversion. For the first part of Line 3, we require $n-1$ multiplications, since it terminates for $i = 2$. Similarly, we require $n - 1$ multiplications for the second part, bringing the total operation count to $3(n-1)$ multiplications and $1$ inversion.
+
+\newpage
+\subsection{PR \#10111 - fe\_equals}
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={fe\_equals Code}, captionpos=t]{fe_equals.cpp}
+
+\begin{table}[htbp]
+\caption{fe\_equals Source To Spec Map}
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | l | c | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+320 & 4 &\verb+fe_tobytes(a_bytes, a)+ & \verb+a_bytes+ is the canonical 32 byte LE encoding. \\
+321 & 5 &\verb+fe_tobytes(b_bytes, b)+ &  \verb+b_bytes+ is the canonical 32 byte LE encoding. \\
+323 & 7 &\verb|int r = 1| & Initial Assumption: Assume Equality \\
+324-325 & 9 & \verb|r &= a_bytes[i] == b_bytes[i]| & $r = \prod\limits_{i = 0}^{31} (a\_bytes[i] \land b\_bytes[i] )$ \\
+327 & 11 &\verb|return r| & $1$ iff $a=b$, $0$ otherwise \\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\caption*{Located in crypto-ops.c}
+\end{table}
+
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+\item The constant-timedness might rely on compiler cooperation. The loop on Line 324-325 has no early exit in the code, but the compiler might terminate when $r == 0$ for the first time.
+\item If \verb+fe_tobytes+ is variable time, then \verb+fe_equal+ will also be variable time.
+\item The AND-accumulator pattern (\verb+r &= a==b+) is theoretically vulnerable to as-if-rule short-circuit at higher optimization levels: once \verb+r+ becomes $0$, the loop result is fixed and a sufficiently aggressive compiler could exit early.  An XOR-accumulator (\verb+r |= a[i] ^ b[i]+) is provably immune since every iteration contributes data-dependently, and would be a low-cost defense-in-depth substitution.  Constant-time has been verified in the current build at \verb+-O2+ under Clang 18 via Timecop, so this is forward-looking hardening rather than a present leak.
+\end{enumerate}
+\subsubsection{Edge Case Analysis}
+\begin{table}[htbp]
+\centering
+{\rowcolors{2}{SkyBlue!25}{CornflowerBlue!50}
+\begin{tabular}{| l | l |}
+\hline
+\textbf{Input} & \textbf{Behavior} \\
+\hline
+\hline
+Same Pointer \verb|a == b| & Returns $1$ (serializes both identically) \\
+Different Limb Rep. for Same Value & Returns $1$, \verb+fe_tobytes+ canonicalizes the value \\
+$a = 0$, $b = p$ & Returns $1$, $p$ reduces to zero. \\
+\hline
+\end{tabular}}
+\end{table}
+
+\subsubsection{Fuzzing Results}
+\verb+fe_equals+ does not have its own dedicated fuzz harness.  Instead, it is exercised indirectly inside \verb+afl_batch_invert+, where it is the comparator that checks the batch result against the per-element \verb+fe_invert+ oracle.  Across the $905{,}249$ iterations of that campaign it was therefore executed on every input drawn from both the canonical and the near-prime corpus.  A constant-time tripwire \verb+ct_fe_equals+ runs the loop body under Valgrind/Memcheck on poisoned inputs and reports no branch-on-secret leaks at \verb+-O2+.  No mismatches between \verb+fe_equals+ and the limb-level equality oracle were observed across any campaign.
+
+\newpage
+\subsection{PR \#10111 - fe\_batch\_invert}
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={fe\_batch\_inverse Code}, captionpos=t]{fe_batch_inverse.cpp}
+
+\begin{table}[htbp]
+\centering
+\caption{fe\_batch\_inverse Source To Spec Map}
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | l | c | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+333-335 & 2 & \verb+if (n == 0) return+ & Empty Batch No-Op \\
+337-338 & 6-7 & \verb+assert(out); assert(in)+ & Null Pointer Guard \\
+339-346 & 10-11 & \verb|pmin+n < pmax| & No Overlap Check \\
+349 & 15 & \verb|fe_copy(out[0],in[0])| & $P_1 = f_1$ \\
+350-352 & 17-19 &\verb|fe_mul(out[i], out[i-1], in[i])| & $P_i = P_{i - 1} \cdot f_i$ \\
+356 & 21 &\verb|fe_invert(a, out[n-1])| & $Q = P_n^{-1}$ \\
+360 & 24 &\verb|fe_mul(out[i-1], a, out[i-2])| & $f_i^{-1} = Q \cdot P_{i-1}$\\
+361 & 25 &\verb|fe_mul(a, a, in[i-1])| & $Q \leftarrow Q \cdot f_i$\\
+363 & 27 &\verb|fe_copy(out[0], a)| & $f_1^{-1} = Q$\\
+\hline
+\end{tabular}}
+\caption*{Located in crypto-ops.c}
+\end{table}
+
+\newpage
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+\item \verb|out[]| is dual-use: the forward pass stores the prefix products in \verb|out[i]|, the backward pass reads \verb|out[i-2]| and overwrites \verb|out[i-1]|. This is done so that none of the prefix products are consumed after an overwrite.
+\item There is no zero-input guard. If any \verb|in[i] == 0|, then the prefix product becomes zero from that point onward. The inversion step returns zero after leveraging Fermat's Little Theorem, in essence sterilizing the output results. To prevent this fruit from the poisonous tree, non-zero inputs must be guaranteed when called.
+\item There is also no guard in place to prevent negative $n$.  Since a negative value for $n$ still passes the \verb|n == 0| check, the function proceeds to \verb|fe_invert(a, out[n-1])| with a negative index, reading out of bounds: this is the actual source of undefined behavior, not the (then-skipped) loops.  Practically, this will never happen, but it should be noted regardless.
+\item The overlap assertion is debug-only, so release builds will have no aliasing protect. Aliasing corrupts output silently. \\
+\item There is a potential bug in the header docstring. The document comment says \\
+ \verb|@return: 0 on success|, but the function signature is void. No return value exists.
+\end{enumerate}
+
+\subsubsection{Edge Case Analysis}
+\begin{table}[htbp]
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{SkyBlue!25}{CornflowerBlue!50}
+\begin{tabular}{| l | l |}
+\hline
+\textbf{Input} & \textbf{Behavior} \\
+\hline
+\hline
+$n = 0$ & Early return, no memory access. \\
+$n = 1$ & Degenerates to a single \verb|fe_invert|. \\
+$n < 0$ & Undefined Behavior: reads \verb|out[n-1]| with a negative index.\\
+Any $in[i] = 0$ & Silent Corruption: All outputs are wrong. \\
+Out and In Overlap & Undefined Behavior in Release; Assertion in Debug. \\
+\verb|out == NULL or in == NULL| ($n > 0$) & Undefined Behavior in Release; Assertion in Debug. \\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\end{table}
+
+\subsubsection{Fuzzing Results}
+The AFL++ harness \verb+afl_batch_invert+ ran $905{,}249$ total iterations across the ASan/UBSan ($151{,}475$), CMPLOG ($49{,}852$), MSan ($675{,}901$), and extended-ASan ($29{,}021$) rounds.  ASan reported no heap overflows, use-after-frees, or buffer overruns, and MSan reported no uninitialized-memory reads inside the batch routine itself.  Across the rounds AFL++ recorded $148$ \verb+SIGILL+ property violations from the harness's \verb+__builtin_trap()+ assertion ($80$ CMPLOG + $58$ MSan), all triaged to a single root cause: inputs containing zero or near-zero field elements.  This is the documented precondition violation discussed in observation 2 above: a single zero in the prefix product propagates through the inversion via \verb+fe_invert+'s Fermat-style identity, corrupting every output.  Protocol-level callers exclude zero inputs by construction, so the violations do not require escalation.
+
+\newpage
+
+\subsection{PR \#10111 - fe\_frombytes\_vartime}
+
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={fe\_frombytes\_vartime Code}, captionpos=t]{fe_frombytes_vartime.cpp}
+
+\begin{table}[htbp]
+\caption{fe\_frombytes\_vartime Source To Spec Map}
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | l | c | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+1384 &1& \verb+h0 = load_4(s)+ & Unpack bits $[0,31]$ into limb $0$ \\
+1385 &2& \verb|h1 = load_3(s+4) << 6| & Unpack bits $[32,55]$, shift for limb $1$ position \\
+1386-1392 &2& \verb+h2...h8 loads+ & Unpack and shift remaining limbs\\
+1393 &3& \verb|h9 = (load_3(s+29) & 8388607) << 2| &Top limb: mask 0x7FFFFF clears bit 255. (1)  \\
+&&& \textit{The ED25519 sign bit.}\\
+1405-1409 &2& \verb|Canonicality if| & Check if $v \geq p$. (2) \\
+1412 &4 & \verb|carry9 = ... h0 += carry9 * 19| & Top-limb carry wraps: $2^{255} \equiv 19 \, \, \, (\text{mod} \, \, \, p)$ \\
+1412-1422 &2& \verb|Carry chain| & Odd limbs carry at $2^{25}$, even at $2^{26}$. (3) \\
+&&& \textit{Two pass: odds, then evens.}\\
+1424-1433 &2& \verb|y[i] = h_i| & Store reduced limbs\\
+1435 &7& \verb|return 0| & Success\\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\caption*{Located in crypto-ops.c}
+\end{table}
+
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+\item The sign bit inherited by the ED25519 encoding is cleared. For a standalone field element deserialization, this means that bytes with bit 255 set are silently treated as if they were clear.
+\item The \verb+Canonicality if+ step checks by comparing pre-carry limbs against $p$'s limb representation: limbs $h_1, \dots, h_9$ are tested for strict equality against the encoded limbs of $p$, while $h_0$ uses $h_0 \geq 2^{32} - 19$ since the bottom $32$ bits of $p$ equal $2^{32} - 19$.  If all comparisons pass, the function returns $-1$.
+\item This functions identically to \verb+fe_frombytes+, with the exception of the canonicality check. \verb+fe_frombytes+ will reduce inputs modulo $p$, but \verb+fe_frombytes_vartime+ will reject them.
+\end{enumerate}
+
+\subsubsection{Edge Case Analysis}
+\begin{table}[htbp]
+\centering
+{\rowcolors{2}{SkyBlue!25}{CornflowerBlue!50}
+\begin{tabular}{| p{2.3in} | p{3.8in} |}
+\hline
+\textbf{Input} & \textbf{Behavior} \\
+\hline
+\hline
+All zero bytes & Returns $0$ \\
+Bytes encoding $p$ & Returns $-1$ \\
+Bytes encoding $p+1,..., 2^{225}-2$ & Returns $-1$ \\
+Bytes encoding $2^{225} - 1$ & Returns $-1$ \\
+Bytes with bit $255$ set, low $255$ bits $< p$ & Returns $0$; bit $255$ silently masked at line $1393$. \\
+Bytes with bit $255$ set, low $255$ bits $\geq p$ & Returns $-1$: bit $255$ is masked, then the canonicality check fires on the remaining limbs. \\
+$p-1$ & Returns $0$ \\
+\hline
+\end{tabular}}
+\end{table}
+
+\subsubsection{Fuzzing Results}
+\verb+fe_frombytes_vartime+ is exercised indirectly by every \verb+afl_x25519_conv+ iteration, since \verb+edwards_bytes_to_x25519_vartime+ deserialises the byte input through it.  Under MSan the harness ran $202{,}703{,}472$ iterations with zero uninitialised-memory reads; under \\ ASan/UBSan/CMPLOG/extended-ASan no memory-safety findings emerged.  The canonicality check (return $-1$ on $b \geq p$) was confirmed to fire deterministically on near-prime inputs: the rejection logic at lines 1405--1409 fired on every \verb+0xff...ff7f+-style input the fuzzer generated.
+
+\newpage
+\subsection[Section Conclusion]{Section Conclusion \hfill \checkmark}
+All functions used for the \textit{Batch Inverse Section} are described correctly mathematically, and implemented according to that description. As such, it is our conclusion that the above functions are fit for deployment in Monero.
+
+\newpage
+
+\section{ED25519 to X25519 Point Conversion}
+The purpose of this section will be to determine the following:
+\begin{enumerate}
+    \item From a cryptographic standpoint, do the functions properly derive the X25519 $x$-coordinate from an ED25519 point?
+    \item Is the code in each function implemented correctly assuming the above is true?
+\end{enumerate}
+
+\subsection{Mathematical Overview}
+Ed25519, in its Twisted Edwards form, is defined as
+$$-x^2 + y^2 =  1 + dx^2y^2 \, \, \, over \, \, \, \mathbb{F}_p$$
+where $p = 2^{255}-19$ and $d = -\frac{121665}{121666}$.
+
+\medskip
+Curve25519, in its Montgomery form, is given as the polynomial:
+$$v^2 = u^3 + 486662u^2 + u \, \, \, \text{over} \, \, \, \mathbb{F}_p$$
+
+\medskip
+It is known that these two curves are \textit{birationally equivalent}, which loosely means that, with the exception of a small subset of points, the curves are isomorphic to each other. So given a point $(x,y)$ on the first curve, one can determine the corresponding coordinate on the second curve using the map
+$$u = \frac{1+y}{1-y},$$
+which is valid for all values except $y = 1$ (the Edwards identity, where the denominator vanishes).
+
+\medskip
+The following functions are used to compute this conversion.
+
+
+\newpage
+\subsection{PR \#9828 - edwardsYZ\_to\_x25519}
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={edwardsYZ\_to\_x25519 Code}, captionpos=t]{edwardsYZ_to_x25519.cpp}
+
+\begin{table}[htbp]
+\centering
+\caption{edwardsYZ\_to\_x25519 Source To Spec Map}
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | l | c | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+3846 &1& \verb+fe_add(tmp0, Z, Y)+ & \verb|tmp0 = Z + Y| \\
+3847 &2& \verb|fe_sub(tmp1, Z, Y)| &  \verb|tmp1 = Z - Y| \\
+3848 &3& \verb+fe_invert(tmp1, tmp1)+ & Set \verb|tmp1| as (\verb|tmp1|\textsuperscript{$p-2$} $\mod p$) \\
+3849 &4& \verb|fe_mul(tmp0, tmp0, tmp1)| & Set \verb|tmp0| = \verb|tmp0| $\cdot$ \verb|tmp1|  \\
+3850 &5& \verb|fe_tobytes(xbytes, tmp0)| & Serialize \verb|tmp0| to 32-byte LE \\
+\hline
+\end{tabular}}
+\caption*{Located in crypto-ops.c}
+\end{table}
+
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+\item When $Z=Y$, the inversion via Fermat's Little Theorem returns $0$ (the \verb+fe_invert(0)=0+ artifact), so the function silently outputs $u = 0$ on Montgomery: the unique $2$-torsion point on Curve25519, not the identity.  No spec documents this fallthrough, and downstream callers who consume the output without further validation would be exposed to a small-subgroup gadget.
+
+\end{enumerate}
+\subsubsection{Edge Case Analysis}
+\textit{Outside of the implementation note, there is no edge case analysis necessary. It is a simple application of fundamental elliptic curve operations and so long as the inversion is respected (non-zero), it should run without issue.}
+
+\subsubsection{Fuzzing Results}
+\verb+edwardsYZ_to_x25519+ is the inner kernel of every \verb+afl_x25519_conv+ iteration: both the struct path (\verb+ge_p3_to_x25519+) and the byte path (\verb+edwards_bytes_to_x25519_vartime+) terminate in this function.  Across the libFuzzer ($1{,}559{,}634$ iters), AFL++ ASan ($1{,}320$), CMPLOG ($1{,}627$), MSan ($202{,}703{,}472$), and extended-ASan ($10{,}099$) rounds the function ran for over $204.3$M sanitiser-instrumented executions with zero memory-safety findings.  The $Z = Y$ degenerate case (which silently returns the identity) was not surfaced by any campaign: inputs come from real curve points where $Z = Y$ requires $y$-coordinate equal to the projective $z$, which is not produced by \verb+ge_frombytes_vartime+ on canonical inputs.
+
+\newpage
+\subsection{PR \#9828 - ge\_p3\_to\_x25519}
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={ge\_p3\_to\_x25519 Code}, captionpos=t]{ge_p3_to_x25519.cpp}
+
+\begin{table}[htbp]
+\centering
+\caption{ge\_p3\_to\_x25519 Source To Spec Map}
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | l | c | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+3855 & 3 &\verb+edwardsYZ_to_x25519(xbytes, h->Y, h->Z)+ & Extracts the Y and Z coordinate \\
+&&&from (X:Y:Z:T). \\
+\hline
+\end{tabular}}
+\caption*{Located in crypto-ops.c}
+\end{table}
+
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+\item There is no validation mechanism and the function `assumes' it was validated at construction.
+\end{enumerate}
+%\subsubsection{Edge Case Analysis}
+%\textit{There are no edge cases to analyze.}
+
+\subsubsection{Fuzzing Results}
+\verb+ge_p3_to_x25519+ is the \emph{struct-path} side of the differential libFuzzer harness \\ \verb+fuzz_diff_x25519_hacl+, which compares its output byte-for-byte against HACL*'s formally-verified \verb+Hacl_Curve25519_51_scalarmult+ on a $G$-derived point. Across $408{,}926$ random Ed25519 secret keys ($80{,}682$ coverage regions spanning both Monero crypto-ops and HACL*) zero divergences were observed, and the campaign produced no ASan or UBSan findings beyond the pre-existing signed-left-shift behavior in \verb+fe_mul+/\verb+fe_sq+ that is a known Monero artifact.  The function thus produces the same $u$-coordinate as a formally-verified reference on every tested input.
+
+\newpage
+
+\subsection{PR \#9828 - edwards\_bytes\_to\_x25519\_vartime}
+
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={edwards\_bytes\_to\_x25519\_vartime Code}, captionpos=t]{edwards_bytes_to_x25519_vartime.cpp}
+
+\begin{table}[htbp]
+\caption{edwards\_bytes\_to\_x25519\_vartime Source To Spec Map}
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | l | c | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+3861 & 4  &\verb+fe_frombytes_vartime(Y, s)+ & Deserialize 32 byte $s$ to field element $Y$ \\
+&&& Reject if $Y \geq p$\\
+3862 & 5 & \verb|return -1| & Non-canonical input rejection  \\
+3866 & 9 &\verb+fe_1(Z)+ & Z = 1 Input is affine, so $y = Y$) \\
+3868 & 11 & \verb|edwardsYZ_to_x25519(xbytes, Y, Z)| & Set \verb+xbytes+ $= \frac{1+Y}{1-Y}$  \\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\caption*{Located in crypto-ops.c}
+\end{table}
+
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+\item The projective formula avoids a field inversion in comparison to the naive approach. This optimization is not in the birational map spec.
+\item The variable time behavior of this function comes from \verb+fe_frombytes_vartime+, however, the rest of the function is constant time.
+\item The function will check the canonical encoding but does not verify the $y$ coordinate falls on the curve.  Contrast \verb+ge_frombytes_vartime+, which does perform $x$-recovery and the curve-equation check $-x^2 + y^2 = 1 + d x^2 y^2$; the byte path here accepts any canonical $y \in [0, p)$ regardless of whether a real Ed25519 point exists with that $y$.
+\item Combined with the silent-identity behavior of \verb+edwardsYZ_to_x25519+, an adversary who supplies the canonical Edwards-identity encoding \verb+01 00...00+ obtains $u = 0$ on Montgomery, which is the $2$-torsion point.  Any future caller that consumes the output without further validation would be exposed to a small-subgroup gadget.  The current PR introduces no callers, so the issue is an API precondition rather than a present-day exposure; a hardened variant should reject when \verb+fe_iszero(Z - Y)+.
+
+\end{enumerate}
+
+\subsubsection{Edge Case Analysis}
+\begin{table}[htbp]
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{SkyBlue!25}{CornflowerBlue!50}
+\begin{tabular}{| l | l |}
+\hline
+\textbf{Input (32-byte $y$ encoding)} & \textbf{Behavior} \\
+\hline
+\hline
+$y$ encodes $(0,1)$ (Edwards identity) & Output $u = 0$ (the $2$-torsion point); int return $0$. \\
+$y$ encodes $(0,-1)$ ($4$-torsion) & Output $u = 0$; int return $0$. \\
+$y$ encodes a point with $y$-coordinate $0$ & Output $u = 1$; int return $0$. \\
+$y$ encodes the basepoint $G$ & Output $u = 9$ (the Curve25519 basepoint); int return $0$. \\
+$y \geq p$ (non-canonical) & Int return $-1$; output $u$ undefined. \\
+Canonical $y < p$ on a curve point & Output $u = (1+y)/(1-y)$ on Montgomery; int return $0$. \\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\end{table}
+
+\subsubsection{Fuzzing Results}
+The CMPLOG round of \verb+afl_x25519_conv+ surfaced $109$ \verb+SIGILL+ property violations in which the byte path (\verb+edwards_bytes_to_x25519_vartime+) and the struct path (\verb+ge_p3_to_x25519+) disagreed on the resulting $u$-coordinate.  Triage classified all $109$ as input-precondition divergences: \verb+ge_frombytes_vartime+ silently reduces non-canonical $y \geq p$ during decompression, while the byte path does not reduce $y \bmod p$ before computing $\frac{1+y}{1-y}$, so the two paths land at different limb representations on the same near-prime input. For canonical inputs (the only inputs the protocol can produce) the two paths agree byte-for-byte across the $204.3$M MSan iterations summarised above, and the campaign reported zero ASan/UBSan/MSan memory-safety findings. A defense-in-depth hardening opportunity which follows would be to have the byte path reduce $y \bmod p$ before the projective formula, restoring parity with the struct path.
+
+\subsection[Section Conclusion]{Section Conclusion \hfill \checkmarky}
+Some care must be taken regarding the \verb+edwardsYZ_to_x25519+ kernel covered earlier in this section, since it will work exactly as described so long as the implicit hypothesis $Z \neq Y$ is respected at the call site.  Specifically, when $Z = Y$ the inversion via Fermat's Little Theorem returns $0$ and the function silently emits $u = 0$ (the unique non-trivial $2$-torsion point on Curve25519); a hardened variant should reject when \verb+fe_iszero(Z - Y)+.  Beside this detail, the mathematics which the code describes are sound and the code implements it correctly.
+
+\newpage
+\section{Torsion Clearing}
+The goals of this section are to answer the following questions:
+\begin{enumerate}
+\item Does each function, when called, soundly perform as desired in a cryptographic sense?
+\item Is the code in each function implemented correctly?
+\item Are \verb+clear_torsion+ and \verb+mul8_is_identity+ constant time?
+\end{enumerate}
+In this section, we will analyze the functions \verb+clear_torsion+, \verb+mul8_is_identity+,  \verb+verPoints+ \verb+ForTorsion+ and \verb+get_valid_torsion_cleared_point+. The focus of the first three subsections will be looking at the code as it is written and ensuring that each of the functions does what it is intended to do.
+\subsection{Mathematical Overview}
+When dealing with a non-prime order group, it is not guaranteed that a randomly chosen point will fall in a prime order subgroup. In this particular instance, the ED25519 curve has order
+$|\mathbb{E}(\mathbb{F}_p)| = 8 \ell$
+where $\ell = 2^{252} + 27742317777372353535851937790883648493
+$, which is prime. The purpose of torsion clearing is to make sure that values do not inadvertently fall into the subgroup of order 8, as many of the security properties that ED25519 enjoys are not valid in the smaller subgroups.
+% the chosen point is not in the larger subgroup of order $\ell$.
+
+\medskip
+In order to be explicit, the torsion subgroup of ED25519, which we will call $\mathbb{E}_8$, we represent as 
+$\mathbb{E}_8 = \{\mathcal{O},T_1,...T_7\}.$
+Each of the points are defined as follows:
+\begin{table}[htbp]
+\centering
+{\rowcolors{2}{SeaGreen!5}{SeaGreen!25}
+\begin{tabular}{| l | c | l|}
+\hline
+\textbf{Point} & \textbf{Coordinates} & \textbf{Order} \\
+\hline
+\hline
+$\mathbb{O}$ & $(0,1)$ & $1$ \\
+$T_1$ & $(0,-1)$ & $2$ \\
+$T_2$ & $(1,0)$ & $4$ \\
+$T_3$ & $(-1,0) $ & $4$\\
+$T_4$ & $(\rho, \gamma)$ & $8$ \\
+$T_5$ & $(-\rho, \gamma)$& $8$\\
+$T_6$ & $(\rho, -\gamma)$& $8$\\
+$T_7$ & $(-\rho, -\gamma)$& $8$\\
+\hline
+\end{tabular}}
+\end{table}
+\newpage
+where
+$$\rho = 2^{\frac{p - 1}{4}} \text{ mod } p \ \ \text{ and } \ \ \gamma = \left(\frac{1 + \rho}{2}\right)^{\frac{1}{2}} \text{ mod } p.$$
+
+\medskip
+In order to ensure points are not in $\mathbb{E}_8$, the following functions are used:
+\begin{enumerate}
+\item \verb+mul8_is_identity(P)+
+\begin{itemize}
+\item Computes $8 \cdot P$.
+\item Checks if $8 \cdot P=0$
+\end{itemize}
+\item \verb+clear_torsion(P)+
+\begin{itemize}
+\item Given $P = P_0 + T$, computes $P_0$.
+\item The above form is the decomposition of $P$ into an element of the prime order subgroup and the torsion subgroup.
+\end{itemize}
+\item \verb+get_valid_cleared_torsion_point(P,out)+
+\end{enumerate}
+
+The first function \verb+mult8_is_identity+ acts exactly how one would expect: it computes $8 \cdot P$ for  input point $P$, then determines whether the point is the identity or not. It does so via 3 point doublings, by computing $2 \cdot P \rightarrow 2 \cdot (2 \cdot P) = 4 \cdot P \rightarrow 2 \cdot (4 \cdot P) = 8 \cdot P$. It checks whether or not the output is the identity element as follows:
+\begin{enumerate}
+    \item The computed coordinates are converted to extended coordinates $(X:Y:Z:T)$.
+    \item Determine if the point is equal to $(0:c:c:0)$, for some non-zero scalar $c$.
+    \item If so, then the point is the identity element, otherwise it is not.
+\end{enumerate}
+
+\medskip
+The second function \verb+clear_torsion+ is slightly more mathematically involved. Since the curve is a finitely generated group $G$, we can directly apply the \textit{fundamental theorem of finite abelian groups} to see that $G$ is isomorphic to the direct sum of cyclic subgroups of prime power order.
+
+\medskip
+Since $\mathbb{E}(\mathbb{F}_p) = 8 \ell$, this curve will be isomorphic to: $$\mathbb{Z}/8\mathbb{Z} \oplus \mathbb{Z}/ \ell \mathbb{Z}$$
+This implies that every point $P$ on the curve can be expressed as the sum of two points $P_0$ and $T$, where:
+$$P = P_0 + T$$
+where $P_0$ is an element of order $\ell$ and $T$ is an element of order dividing $8$.
+
+\medskip
+In order to retrieve the $P_0$ point, we can perform the following procedure:
+\begin{enumerate}
+    \item Compute $8 \cdot P$. Simplifying the computation, we have:
+    $$8 \cdot P = 8 \cdot (P_0 + T) = 8 \cdot P_0 + 8 \cdot T$$
+    \item Since $T$ has an order dividing $8$, we have that:
+    $$8 \cdot T = 0  \ \ \Rightarrow \ \ 8 \cdot P = 8 \cdot P_0$$
+    \item Since $P_0$ has order $\ell$, it's a fact that $8 \cdot P_0$ remains in the prime subgroup. As such, $8^{-1}$ exists modulo $\ell$. So, we multiply by the inverse, resulting in
+    $$8^{-1} \cdot (8 \cdot P) = P_0,$$
+\end{enumerate}
+where all operations take place in the appropriate modulus. Subsequently, the element produced is guaranteed to be an element of the prime order subgroup exclusively.
+
+\medskip
+The last function simply puts these two pieces together. 
+
+\newpage
+\subsection{PR \#10342 - mul8\_is\_identity}
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={mul8\_is\_identity Code}, captionpos=t]{mul8_is_identity.cpp}
+
+\begin{table}[htbp]
+\caption{mul8\_is\_identity Source To Spec Map}
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | l | c | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+34 & 1 & \verb+bool mul8_is_identity(const ge_p3 &point)+ & Predicate: 8P = O \\
+36 & 3 & \verb+ge_p3_to_p2(&point_ge_p2, &point)+ & $(X:Y:Z:T) \Rightarrow (X:Y:Z)$\\
+38 & 5 & \verb+ge_mul8(&point_mul8, &point_ge_p2)+ & 8P via three point doublings.\\
+40 & 7 & \verb+ge_p1p1_to_p3(&point_mul8_p3, &point_mul8)+ & Convert to extended form. \\
+41 & 8 & \verb+return ge_p3_is_point_at_infinity_vartime(...)+ & Checks if $X=0$, $T=0$, $Y=Z$ and \\
+&&& $Y \neq 0$. True iff $(0:c:c:0) = O$. \\
+
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\caption*{Located in fcmp\_pp\_crypto.cpp}
+\end{table}
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+\item The function does not carry a \verb+_vartime+ suffix. The variable runtime is not problematic since all inputs are public data, but should be included for the sake of clarity and consistency.
+\end{enumerate}
+\newpage
+\subsubsection{Edge Case Analysis}
+
+\begin{table}[htbp]
+\centering
+{\rowcolors{2}{SkyBlue!25}{CornflowerBlue!50}
+\begin{tabular}{| p{1.8in} | p{4.3in} |}
+\hline
+\textbf{Input} & \textbf{Behavior} \\
+\hline
+\hline
+$\mathbb{O}$ & \verb+true+ \\
+$T_1,...,T_7$ & \verb+true+ \\
+$G+T$ & \verb+false+ \\
+$y \geq p$ & Not reachable: \verb+mul8_is_identity+ takes a \verb+ge_p3+, so non-canonical $y \geq p$ would be rejected upstream by the caller's \verb+ge_frombytes_vartime+ before invocation.\\
+Off-curve bytes & Same as above: rejection is upstream of this function.\\
+\hline
+\end{tabular}}
+\end{table}
+
+\subsubsection{Fuzzing Results}
+\verb+mul8_is_identity+ is the small-order rejection step of \verb+afl_torsion+ and is invoked on every queue input across the ASan ($4{,}078$), CMPLOG ($10{,}147$), and extended-ASan ($10{,}344$) rounds.  ASan reported no memory-safety findings.  The campaign confirmed correct rejection on the eight torsion points and acceptance on $G + T$ inputs; the property-violation crashes recorded against \verb+afl_torsion+ are attributable to \verb+clear_torsion+ idempotency rather than to \verb+mul8_is_identity+ itself.
+
+\newpage
+\subsection{PR \#10342 - clear\_torsion}
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={clear\_torsion Code}, captionpos=t]{clear_torsion.cpp}
+
+\begin{table}[htbp]
+\caption{clear\_torsion Source To Spec Map}
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | l | c | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+44 & 1  &\verb+clear_torsion(const ge_p3 &point)+ & $P \Rightarrow P_0$ where $P = P_0 + T$ \\
+46-47 & 3-4 & \verb|ge_scalarmult(&point_inv_8, to_bytes,...)| & $Q = (8^{-1} \mod \ell) \cdot P$ \\
+48-49 & 5 &\verb+ge_mul8(&point_inv_8_mul_8, &point_inv_8)+ &  $R = 8\cdot (8^{-1} \cdot P) = P_0 + 8T' = P_0$\\
+50-51 & 7 & \verb|ge_p1p1_to_p3(&torsion_cleared_point, ...)| & Convert to extended for serialization \\
+52-53 & 9 &\verb+ge_p3_tobytes(to_bytes(k_out), ...)+ & Compress to 32-byte canonical encoding\\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\caption*{Located in fcmp\_pp\_crypto.cpp}
+\end{table}
+
+
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+    \item This function also does not carry a \verb+_vartime+ suffix, despite calling \verb+ge_scalarmult+ which is variable time. However, like the prior function, this is not problematic from a security standpoint, since the inputs are public.
+    \item The constant \verb+EC_INV_EIGHT+ used at Line 3 is declared with type \verb+crypto::ec_point+ in \verb+crypto.h+, but is semantically a scalar (the value $8^{-1} \bmod \ell$, byte-identical to \verb+rct::INV_EIGHT+).  Use as a scalar is laundered through the \verb+to_bytes(ec_point)+ overload, which performs a \verb+reinterpret_cast+ to \verb+const unsigned char*+.  Pre-FCMP++ Monero stores the same constant as an untyped \verb+rct::key+ (deliberately type-agnostic); the new \verb+ec_point+ alias is a regression in auditability rather than a behavioural bug.  Re-typing as \verb+ec_scalar+ would have zero functional impact and remove the cast.
+\end{enumerate}
+\subsubsection{Edge Case Analysis}
+
+\begin{table}[htbp]
+\centering
+{\rowcolors{2}{SkyBlue!25}{CornflowerBlue!50}
+\begin{tabular}{| p{1.8in} | p{4.3in} |}
+\hline
+\textbf{Input} & \textbf{Behavior} \\
+\hline
+\hline
+$\mathbb{O}$ & \verb+0+ \\
+$T_1,...,T_7$ & \verb+0+ \\
+$G+T$ & \verb+G+ \\
+$y \geq p$ & Not reachable: \verb+clear_torsion+ takes a \verb+ge_p3+, so non-canonical $y \geq p$ would be rejected upstream by the caller's \verb+ge_frombytes_vartime+ before invocation.\\
+Off-curve bytes & Same as above: rejection is upstream of this function.\\
+\hline
+\end{tabular}}
+\end{table}
+
+\subsubsection{Fuzzing Results}
+The AFL++ harness \verb+afl_torsion+ exercised \verb+clear_torsion+ for $20{,}969$ total iterations across the ASan, CMPLOG, and extended-ASan rounds.  AFL++ recorded $50$ \verb+SIGILL+ property violations ($27$ ASan + $23$ CMPLOG, plus $14$ in the extended-ASan round) when its \verb+__builtin_trap()+ assertion fired on either the idempotency check:
+$$(\texttt{clear\_torsion}(\texttt{clear\_torsion}(P)) = \texttt{clear\_torsion}(P))$$ 
+or the small-order-identity check. All crashes triaged to a single root cause: non-canonical encodings with $y \geq p = 2^{255}-19$. \verb+ge_frombytes_vartime+ is permissive about $y \geq p$ (it reduces silently during decompression), so the resulting limb values then diverge from those produced by re-running the pipeline on the cleared output. Protocol callers always supply canonical encodings, so the violations represent input-precondition gaps rather than function bugs.  Zero ASan memory-safety findings.
+
+\newpage
+\subsection{PR \#10342 - get\_valid\_cleared\_torsion\_point}
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={get\_valid\_cleared\_torsion\_point Code}, captionpos=t]{get_valid_cleared_torsion_point.cpp}
+
+\begin{table}[htbp]
+\caption{get\_valid\_cleared\_torsion\_point Source To Spec Map}
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | l | l | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+57 & 1 & \verb+bool get_valid_torsion_cleared_point(...)+ & Definition Statement \\
+59 & 3 & \verb+ge_frombytes_vartime(...) != 0+ & Decompress 32 bytes to curve point. \\ 
+&&& Rejects off-curve and non-canonical $y \geq p$\\
+61 & 5 & \verb+mul8_is_identity(p3)+ & Reject if 8P = O (all 8 torsion elements)\\
+63 & 7 & \verb+fcmp_pp::clear_torsion(p3)+ & Project onto prime-order subgroup. \\
+64 & 8 & \verb+torsion_cleared_out == crypto::EC_I+ & Reject if torsion-cleared result is identity. \\
+
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\caption*{Located in fcmp\_pp\_crypto.cpp}
+\end{table}
+
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+    \item It is not entirely clear why the function has a redundant check for the torsion cleared output (Line 8 in the included code). If a torsion cleared element were to be the identity, then it would imply that the original element would have been rejected by \verb+mul8_is_identity+.
+\end{enumerate}
+\subsubsection{Edge Case Analysis}
+\textit{Since this function is simply iterative calling of the prior functions, there is no edge case analysis necessary, since all problematic instances would be covered by the previous tables given.}
+
+\subsubsection{Fuzzing Results}
+\verb+get_valid_torsion_cleared_point+ is the validation pipeline that wraps \verb+ge_frombytes_vartime+, \verb+mul8_is_identity+, and \verb+clear_torsion+; it is fuzzed transitively through \verb+afl_output_to_tuple+, which routes every queue input through it on the legacy-output branch.  Across the ASan ($308{,}443$) and CMPLOG ($402{,}193$) rounds ($710{,}636$ iterations combined) zero ASan memory-safety findings were recorded, and the explicit identity-rejection branch was reached without further crashes on any reduced torsion input.
+
+\newpage
+\subsection[Section Conclusion]{Section Conclusion \hfill \checkmark}
+To summarize:
+\begin{itemize}
+\item Each of the above listed functions performs mathematically soundly.
+\item Each of the above functions appear to be implemented correctly in the code.
+\item \verb+clear_torsion+ and \verb+mul8_is_identity+ are certainly \textbf{not} constant time. \verb+clear_torsion+ has an instance of \verb+ge_scalarmult+ in its body, which is not a constant time function. \verb+mul8_is_identity+ is also not constant time since it calls a \verb+_vartime+ suffixed function in its body. However, both of these are acceptable, since the inputs are public data, so nothing is gained from timing attacks.
+\end{itemize}
+
+\newpage
+\section{Change to fe\_reduce\_vartime}
+The purpose of this section is to address the following:
+\begin{enumerate}
+    \item Is the rationale documented in the source comment immediately preceding \verb+fe_reduce_vartime+ (\verb+crypto-ops.c+, lines $3887$--$3906$) valid rationale for introducing the function? The comment states that \verb+fe_add+ and \verb+fe_sub+ have postcondition bounds ($|h|$ bounded by $1.1 \cdot 2^{26}, 1.1 \cdot 2^{25}, \dots$) that are looser than their precondition bounds ($|f|, |g|$ bounded by $1.1 \cdot 2^{25}, 1.1 \cdot 2^{24}, \dots$), so a chain of additions/subtractions can leave a field element outside the input domain of the next call; \verb+fe_reduce_vartime+ contracts the limbs back into the precondition domain by round-tripping through \verb+fe_tobytes+ and \verb+fe_frombytes_vartime+.
+    \item Is \verb+fe_reduce_vartime+ sound from a cryptographic standpoint?
+    \item Is the code introduced by the PR implemented correctly assuming the cryptography is sound?
+\end{enumerate}
+
+
+\subsection{PR \#10135 - fe\_reduce\_vartime}
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={fe\_reduce\_vartime Code}, captionpos=t]{fe_reduce_vartime.cpp}
+
+\begin{table}[htbp]
+\caption{fe\_reduce\_vartime Source To Spec Map}
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | c | l | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+3907 & 1 & \verb+int fe_reduce_vartime(...)+ & Returns 0 on success, -1 on non-canonical input \\
+3909 & 3 & \verb+unsigned char f_bytes[32]+ & Allocate $b$ in $\{0,1\}^{256}$\\ 
+
+3910 & 4 & \verb+fe_tobytes(f_bytes, f)+ & $b =$ \verb+canonical_encode+($f \mod p$)\\
+3911 & 5 & \verb+return fe_frombytes_vartime(...)+ & $f' =$ \verb+decode+$(b)$ with limbs in precondition bounds \\
+&&& Reject if $b \geq p$ \\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\caption*{Located in crypto-ops.c}
+\end{table}
+
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+\item There is a minor cosmetic typo on line 3900, where `poscondition' should be `postcondition'.
+\end{enumerate}
+\newpage
+\subsubsection{Edge Case Analysis}
+\begin{table}[htbp]
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{SkyBlue!25}{CornflowerBlue!50}
+\begin{tabular}{| l | c | l|}
+\hline
+\textbf{Input} & \textbf{Behavior} & \textbf{Output} \\
+\hline
+\hline
+Limbs encoding $0$ & Bytes = \verb+0x00...00+, reloads as zero limbs & 0 \\
+Limbs encoding $p = 2^{255} - 19$ & \verb+fe_tobytes+ reduces to 0, Bytes = \verb+0x00...00+ & 0 \\
+Limbs encoding $p+1$ & \verb+fe_tobytes+ reduces to $1$ & 0 \\
+Limbs at max postcondition bound & \verb+fe_tobytes+ carry chain handles this & 0 \\
+($1.12^{26}$ \textit{even}, $1.12^{25}$ \textit{odd}) &&\\
+Limbs exceeding postcondition bound & \verb+fe_tobytes+ carry chain may overflow \verb+int32_t+ & \textbf{Undefined} \\
+(\textit{Near} $2^{31}$)&& \\
+Bytes $\geq p$ after \verb+fe_tobytes+ & \verb+fe_tobytes+ always outputs $[0, p)$ & \textbf{Unreachable} \\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\end{table}
+
+\subsubsection{Fuzzing Results}
+The function's two callees, \verb+fe_tobytes+ and \verb+fe_frombytes_vartime+, are the same routines exercised by \verb+afl_x25519_conv+ for $202{,}703{,}472$ MSan iterations with zero memory-safety findings, so the round-trip semantics of \verb+fe_reduce_vartime+ inherit that coverage. A regression test \verb+FeReduceVartime.RoundTrip+ enumerates the postcondition limb bounds described in the source-to-spec map above; running individual PR-branch builds remains a follow-up to close the dedicated-harness gap.
+
+\subsection[Section Conclusion]{Section Conclusion \hfill \checkmark}
+As it is written above, it is our opinion the following code is fit for use.  The round-trip through \verb+fe_tobytes+ and \verb+fe_frombytes_vartime+ correctly contracts limb magnitudes back into the precondition domain of \verb+fe_add+/\verb+fe_sub+.
+
+\newpage
+\section{ED25519 to Weierstrass Point Conversion}
+The purpose of this section is as follows:
+\begin{enumerate}
+    \item Do the functions correctly implement the specification detailed in section E.2 of the paper linked: \\ {\small{\url{https://www.ietf.org/archive/id/draft-ietf-lwig-curve-representations-02.pdf}}}?
+    \item Do the constants introduced (\verb+fe_a+, \verb+fe_a_inv_3+, \verb+fe_c+) match the constants specified in the paper?
+    \item Is \verb+fe_ed_derivatives_to_wei_x_y+ constant time?
+\end{enumerate}
+
+\subsection{Mathematical Overview}
+The following functions are used to convert elliptic curve coordinates from ED25519 in the Twisted Edwards form to short Weierstrass form, which is used in the FCMP++ tree construction. Since both the Selene and Helios curves are in short Weierstrass form, every output public key must be converted before it can be used as a leaf in the curve tree.
+
+\medskip
+In order to facilitate this, we convert first from Twisted Edwards coordinates to Montgomery coordinates, then from Montgomery to short Weierstrass form. The first conversion is done in the usual way (as detailed in PR \#9828), by setting:
+$$u = \frac{1 + y}{1 - y} \, \, \, \, \text{ and } \, \, \, \, v =\frac{1+y}{(1-y) \cdot x}$$
+The second conversion is also done in the usual way:
+$$w_x = u + \frac{A}{3} \, \, \, \, \text{ and } \, \, \, \, w_y = c \cdot v$$
+where the constants $A$, $\frac{A}{3} \ (\text{mod } p)$, and $c$ are hardcoded constants, defined in \verb+crypto-ops-data.c+ as:
+\begin{itemize}
+    \item The $A$ coefficient: \verb+fe_a+ $=486662$.
+    \item The $\frac{A}{3} \text{ mod } p$ component: \verb+fe_a_inv_3+ (Stored as a 10-limb radix field element).
+    \item The $c$ coefficient: \verb+fe_c+ $= \sqrt{-(A+2)} \mod p$,
+\end{itemize}
+where $p = 2^{255}-19$.
+
+
+\newpage
+\subsection{PR \#10345 - fe\_ed\_derivatives\_to\_wei\_x}
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={fe\_ed\_derivatives\_to\_wei\_x Code}, captionpos=t]{fe_ed_derivatives_to_wei_x.cpp}
+
+\begin{table}[htbp]
+\caption{fe\_ed\_derivatives\_to\_wei\_x Source To Spec Map}
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | c | l | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+3937 & 1 & Parameters : \verb+inv_one_minus_y, one_plus_y+ & Inputs: $(1-y)^{-1}, (1+y)$ \\
+3941 & 3 & \verb+fe_mul(..., inv_one_minus_y, one_plus_y)+ & $u = \frac{(1+y)}{(1-y)}$\\
+&&& \textit{Montgomery u-coordinate}\\ 
+3945 & 4 & \verb+fe_add(wei_x_fe,..., fe_a_inv_3)+ & $w_x = u + \frac{A}{3}$\\ &&&\textit{Montgomery to Weierstrass}\\
+3946 & 5 & \verb+fe_tobytes(wei_x, wei_x_fe)+ & Serialize, implicitly reduces mod $p$. \\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\caption*{Located in crypto-ops.c}
+\end{table}
+
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+    \item This function is static and only callable within \verb+crypto-ops.c+, where it is called by \verb+fe_ed_derivatives_to_wei_x_y+.
+\end{enumerate}
+%\subsubsection{Edge Case Analysis}
+%\textit{The only edge cases to consider would be those that result in a division by zero scenario, which are checked for and excluded.}
+
+\newpage
+\subsection{PR \#10345 - fe\_ed\_derivatives\_to\_wei\_x\_y}
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={fe\_ed\_derivatives\_to\_wei\_x\_y Code}, captionpos=t]{fe_ed_derivatives_to_wei_x_y.cpp}
+
+\begin{table}[htbp]
+\caption{fe\_ed\_derivatives\_to\_wei\_x\_y Source To Spec Map}
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | c | l | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+3950 & 1 & Parameters : \verb+inv_one_minus_y+ & Inputs: $(1-y)^{-1}, (1+y), ((1-y) \cdot x)^{-1}$ \\
+&& \verb+one_plus_y, inv_one_minus_y_mul_x+& \\
+3952 & 3 & \verb+fe_ed_derivatives_to_wei_x(...)+ & Delegates $w_x$ computation to the prior function\\
+3956 & 7 & \verb+fe_mul(..., fe_c, one_plus_y)+ & $c \cdot (1+y)$\\ 
+3960 & 11 & \verb+fe_mul(wei_y_fe, ...)+ & $w_y = \frac{c \cdot (1+y)}{(1-y) \cdot x}$ \\
+3961 &12& \verb+fe_tobytes(wei_y, wei_y_fe)+&Serialize, implicitly reduces mod p \\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\caption*{Located in crypto-ops.c}
+\end{table}
+\subsubsection{Implementation Observations}
+\textit{There are no important notes or observations regarding this function.}
+
+\subsubsection{Edge Case Analysis}
+\begin{table}[htbp]
+\centering
+{\rowcolors{2}{SkyBlue!25}{CornflowerBlue!50}
+\begin{tabular}{| l | l |}
+\hline
+\textbf{Input} & \textbf{Behavior} \\
+\hline
+\hline
+Identity ($y = 1$) & Caller rejects via \verb+point_to_ed_derivatives+; never reached. \\
+$x = 0$ & $(1 - y) \cdot x = 0$ inverse undefined; rejected upstream. \\
+Generator $G$ & Returns canonical $(w_x, w_y)$ on the Weierstrass curve. \\
+Torsion / near-prime $y$ & Canonical limbs satisfy $w_y^2 = w_x^3 + a_{\text{wei}} w_x + b_{\text{wei}} \pmod p$. \\
+Non-canonical $y \geq p$ & Output non-reduced; harness curve-equation check fails (see fuzzing). \\
+\hline
+\end{tabular}}
+\end{table}
+
+\subsubsection{Fuzzing Results}
+The AFL++ harness \verb+afl_wei_conv+ exercised the full Weierstrass conversion pipeline \\(\verb+point_to_ed_derivatives+ $\to$ \verb+batch invert+ $\to$ \verb+fe_ed_derivatives_to_wei_x_y+) for $29{,}078$ iterations across the ASan ($15{,}773$), CMPLOG ($1{,}276$), and extended-ASan ($12{,}029$) rounds.  AFL++ recorded $66$ \verb+SIGILL+ property violations ($25$ ASan + $23$ CMPLOG + $18$ extended-ASan) where the harness' Weierstrass curve-equation check $w_y^2 = w_x^3 + a_{\text{wei}} w_x + b_{\text{wei}} \pmod{p}$ failed.  All $66$ triaged to a single root cause: non-canonical encodings with $y \geq p$ produce non-reduced limb values that propagate through \verb+fe_mul+ and \verb+fe_add+, yielding $w_x, w_y$ that satisfy a shifted equation.  The conversion is correct on every canonical input.  Zero ASan memory-safety findings; harness Weierstrass constants $a_{\text{wei}}, b_{\text{wei}}$ were independently verified and are not the cause of the property violations.
+
+\newpage
+\subsection{PR \#10345 - point\_to\_ed\_derivatives}
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={point\_to\_ed\_derivatives Code}, captionpos=t]{point_to_ed_derivatives.cpp}
+
+\begin{table}[htbp]
+\caption{point\_to\_ed\_derivatives Source To Spec Map}
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | c | l | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+70 & 1 & \verb+if (pub == crypto::EC_I) return false+ & Reject $(0,1)$. \\
+&&&\textit{Would make} $1-y=0$. \\
+74 & 3 & \verb+ge_frombytes_vartime(&p3, to_bytes(pub))+ & Decompress point.\\ &&& \textit{Rejects non-canonical} $y \geq p$.\\
+77 & 7 & \verb+fe_1(one)+ &Calls $1$.\\ 
+79 & 11 & \verb+fe_add(ed_derivatives.one_plus_y, one, p3.Y)+ & Computes $(1+y)$.  \\
+80 &12& \verb+fe_sub(ed_derivatives.one_minus_y, one, p3.Y)+& Computes $(1-y)$. \\
+82 & & \verb+fe_mul(ed_derivatives.one_minus_y_mul_x, ...)+ & Computes $(1-y) \cdot x$.\\
+&&& \textit{Precomputed for batch inversion}.\\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\caption*{Located in fcmp\_pp\_crypto.cpp}
+\end{table}
+
+\newpage
+\subsubsection{Implementation Observations}
+\textit{There are no important notes or observations regarding this function.}
+
+%\subsubsection{Edge Case Analysis}
+%\textit{There are no pertinent edge cases that need to be addressed, mainly due to the explicit checks in the function.}
+
+\subsubsection{Fuzzing Results}
+\verb+point_to_ed_derivatives+ is the entry point of \verb+afl_wei_conv+ and is also called by \\ \verb+output_tuple_to_pre_leaf_tuple+, so it is exercised by both the wei\_conv ($29{,}078$ iters) and output\_to\_tuple ($801{,}817$ iters) campaigns.  The explicit identity rejection on Line 1 prevents \verb+fe_batch_invert+ corruption: a single $1 - y = 0$ would zero every batched inversion via the $\verb+fe_invert(0)+ = 0$ Fermat artifact noted in \S 4 (Batch Inverse).  Across both harnesses the identity check fired before any inversion occurred whenever the input encoded $\mathcal{O}$, with zero ASan memory-safety findings.
+
+\subsection[Section Conclusion]{Section Conclusion \hfill \checkmark}
+The functions covered in this section all perform exactly as described mathematically, and are, in our opinion, fit for use.
+
+\newpage
+\section{Key Image}
+The purpose of this section is the following:
+\begin{enumerate}
+\item Verify the rationale that Monero's existing hash-to-point function is, in fact, biased.
+\item Does the \verb+unbiased_hash_to_ec+ function achieve the stated goal of being unbiased?
+\item Does the implementation match Elligator 2, specified in \\ {\small\url{https://eprint.iacr.org/2013/325.pdf}}?
+\item Is the algorithm utilized in the function unbiased from a cryptographic standpoint?
+\item Is the algorithm utilized in the function collision resistant?
+\item Does the code perform as claimed assuming the cryptographic protocol utilized in the function is unbiased?
+\end{enumerate}
+
+\subsection{Mathematical Overview}
+
+It should first be noted that the algorithm used is an application of an Elligator-style map, combined with an appropriate hash function. In the \verb+unbiased_hash_to_ec+, the hash function used is \verb+BLAKE2b+. Note that under the construction, the hash properties of the composite map are determined by the chosen hash function. It can be seen readily that the \verb+unbiased_hash_to_ec+ will inherit the cryptographic guarantees of \verb+BLAKE2b+, and as a result will possess the same collision resistance as \verb+BLAKE2b+.
+
+The construction can be simply viewed as the Elligator 2 map $\varphi$ with the \verb+BLAKE2b+ hash, $H$, giving:
+$$\varphi(H(x))$$
+Regardless of the properties of the outer map, the information is still protected by the hash on the inside.
+
+\medskip
+
+
+\newpage
+\subsection{PR \#10338 - biased\_hash\_to\_ec}
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={biased\_hash\_to\_ec Code}, captionpos=t]{biased_hash_to_ec.cpp}
+
+\begin{table}[htbp]
+\caption{biased\_hash\_to\_ec Source To Spec Map}
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | c | l | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+616 & 5 & \verb+cn_fast_hash(std::addressof(key), sizeof(public_key), h)+ & $h =$ \verb+Keccak-256(K)+, 32 bytes \\
+617 & 6 & \verb+ge_fromfe_frombytes_vartime(&point, ... &h)+ & $P = \ell_2(h \text{ mod } p)$ in \verb+ge_p2+ \\
+618 & 7 & \verb+ge_mul8(&point2, &point)+ & $8 \cdot P$ \\
+619 & 8 & \verb+ge_p1p1_to_p3(&res, &point2)+ & Convert to extended coordinates. \\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\caption*{Located in crypto.cpp}
+\end{table}
+
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+\item The map is explicitly biased: \verb+ge_fromfe_frombytes_vartime+ is a Shallue--van de Woestijne-style construction whose image is restricted to points with square $x$-coordinate, so half of the prime-order subgroup is unreachable.
+\item The cofactor is cleared by a single \verb+ge_mul8+ rather than by the RFC 9380 \verb+clear_cofactor+ pattern; for Ed25519 the two are equivalent, since the cofactor is exactly $8$.
+\item The hash is \verb+cn_fast_hash+ (Keccak-256) over a fixed-width $32$-byte public key with no domain-separation tag.  The fixed input width and Monero's exclusive use of \verb+cn_fast_hash+ for this construction make collisions across protocols implausible in current usage, but the same hardening recommendation given for \verb+unbiased_hash_to_ec+ (in the next subsection) applies if a second consumer of this primitive is added.
+\item The function is declared \verb+static+: it is file-internal to \verb+crypto.cpp+ and is invoked from the legacy stealth-address and ring-signature paths (\verb+generate_key_image+, \verb+generate_+ \verb+ring_signature+, \verb+check_ring_signature+).
+
+\end{enumerate}
+
+%\subsubsection{Edge Case Analysis}
+%\textit{There are no real edge cases to consider.}
+
+\subsubsection{Fuzzing Results}
+\verb+biased_hash_to_ec+ is exercised on every iteration of \verb+afl_hash_to_ec+.  The campaign ran $100{,}015{,}388$ iterations under ASan without crashes or ASan memory-safety findings, and the harness verified that every output decompresses as a valid Ed25519 point and is never the identity: so the bias of the map is a property of where outputs land, not whether outputs land on-curve.
+
+%\subsubsection[Conclusion]{Conclusion \hfill \checkmark}
+%The code is fit for use.  The Shallue--van de Woestijne map is a known biased hash-to-curve, and the bias is the documented protocol behavior preserved here for backward compatibility with Monero's existing key-image construction; no implementation defect is introduced by the function as written.
+
+\newpage
+
+\subsection{PR \#10338 - unbiased\_hash\_to\_ec}
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={unbiased\_hash\_to\_ec Code}, captionpos=t]{unbiased_hash_to_ec.cpp}
+
+\begin{table}[htbp]
+\caption{unbiased\_hash\_to\_ec Source To Spec Map}
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | c | l | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+623 & 2 & \verb+uint8_t hash[64]+ & Allocate for $(h1 || h2)$ \\
+624 & 3 & \verb+blake2b(std::addressof(hash), 64, preimage,...)+ & $(h1 || h2) = \verb+BLAKE2b(preimage)+$\\
+&&&64 bytes \\
+627 & 6 & \verb+ge_fromfe_frombytes_vartime(&first, ... &hash)+ & $P_1 = \ell_2(h1)$ from $hash[0..31]$\\
+629 & 8 & \verb+ge_mul8(&first_p1p1, &first)+ & $Q_1 = 8 \cdot P_1$ \\ 
+&&& (cofactor clear on first half)\\
+631 & 10 & \verb+ge_p1p1_to_p3(&first_p3, &first_p1p1)+ & Convert $Q_1$ to extended coordinates.\\
+634 & 13 & \verb|ge_fromfe_frombytes_vartime(&second, ... &hash + 32)| & $P_2 = \ell_2(h2)$ from $hash[32..63]$\\
+636 & 15 & \verb+ge_mul8(&second_p1p1, &second)+ & $Q_2 = 8 \cdot P_2$ \\
+&&& (cofactor clear on second half)\\
+638 & 17 & \verb+ge_p1p1_to_p3(&second_p3, &second_p1p1)+ & Convert $Q_2$ to extended coordinates.\\
+640 & 19 & \verb+ge_p3_to_cached(&second_cached, &second_p3)+ & Convert $Q_2$ for addition\\ 
+&&& \verb+ge_cached+ format\\
+643 & 22 & \verb+ge_add(&point, &first_p3, &second_cached)+ & $H = Q_1 + Q_2$ \\
+&&&(RFC 9380, \S 3: random-oracle\\
+&&&construction $Q_0 + Q_1$)\\
+646 & 25 & \verb+ge_p1p1_to_p3(&res_ge_p3, &point)+ & Convert $H$ to extended coordinates. \\
+647 & 26 & \verb+ge_p3_tobytes(&res, &res_ge_p3)+ & Compress $H$ to 32 bytes. \\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\caption*{Located in crypto.cpp}
+\end{table}
+
+\newpage
+\subsubsection{Proof of Unbiasedness}
+\indent \indent Let us assume first that Elligator 2 outputs only points with a square $x$-coordinate, which is only half of the points on the elliptic curve. The proposed solution by Kayaba was to invoke twice and sum the outputs to remove any bias. Here, we will confirm that this is the case.
+
+\medskip
+First, we show that a sum of squares can represent any point on the curve, so let $E$ be an elliptic curve of prime order $p$. Formally, we will show that for all $c \in \mathbb{F}_p$, we can find $a,b$ such that:
+$$a^2 + b^2 \equiv c \text{ mod } p$$
+Let $S$ be the set of squares in $\mathbb{F}_p$. If we include $0$, then by Euler's criterion:
+$$|S| = \frac{p+1}{2}$$
+Select an arbitrary $c$ and define the set difference as $S_c = \{c - s \mid s \in S\}$. Since this is simply a translation, the cardinality is invariant; hence, it must be that $|S| = |S_c|$. We then note that:
+$$|S| + |S_c| = p + 1 > p = |\mathbb{F}_p|$$
+As such, the intersection of $S$ and $S_c$ is non-empty. Since we've established the existence of an $x \in S \cap S_c$, it must be both a square, and $c$ minus a square: that is, there exist $a \in S$ and $b \in S_c$ such that
+$$x = a^2 \, \, \, \text{ and } \, \, \, x = c - b^2.$$
+Hence, $a^2 + b^2 = c$.
+
+\medskip
+Now we verify uniformity. We have shown that summing these coordinates can range the whole space, but it could be that certain points are much more likely outcomes than others, so we must establish that sums of this type are distributed uniformly. To show this, we count the number of solutions to $a^2 + b^2 \equiv c \text{ mod } p$. 
+
+Let $p > 2$. Let $\chi$ be the Legendre symbol, defined as follows:
+$$\chi(x) = \begin{cases}
+    0 & \text{ if } x = 0, \\
+    1 & \text{ if } x \text{ is a quadratic residue}, \\
+    -1 & \text{ if } x \text{ is a non-residue}.
+\end{cases}$$
+
+For any $y \in \mathbb{F}_p$, the number of solutions to the equation $x^2 \equiv y \text{ mod } p$ is exactly $1+\chi(y)$. This can be readily seen by counting cases: if $y = 0$, there is only one solution, $x = 0$. If $y$ is a residue, then there exists a solution to $x^2 \equiv y \text{ mod } p$, which means that $-x$ is also a solution, hence there must be two. If $y$ is a non-residue, then by definition, there exists no solutions.
+
+\medskip
+Let $N_c$ be the number of solutions to $a^2 = c - b^2$. If we sum the number of ways to select $a$ for every possible $b$, we find that
+$$N_c = \sum_{x \in \mathbb{F}_p} (1 + \chi(x)) \cdot (1 + \chi(c - x)).$$
+This comes from fixing a dummy variable $x$, then counting the number of $a,b$ simultaneously satisfying $x = a^2$ and $b^2 = c - x$.
+
+\medskip
+This summation can be expanded to obtain
+$$N_c = \sum_{x \in \mathbb{F}_p} 1 + \sum_{x \in \mathbb{F}_p} \chi(x) + \sum_{x \in \mathbb{F}_p} \chi(c-x) + \sum_{x \in \mathbb{F}_p} \chi(x(x-c)).$$
+Immediately, we note that the first summation is equal to $p$. We also notice that the number of residues is equal to the number of non-residues, so the second and third summation are both $0$. From this, we simplify
+$$N_c = p + \sum_{x \in \mathbb{F}_p} \chi(x(x-c)).$$
+Since $\chi(x(c-x)) = 0$ when $x = 0$, we need only to sum over the non-zero values. If $x,c \neq 0$, by the multiplicatively of the character, we can factor $\chi(x(c-x))$ as
+$$\chi(x(c-x)) = \chi(x^2(cx^{-1} - 1)) = \chi(x^2) \cdot \chi(cx^{-1}-1).$$
+Now, notice that since $x$ iterates over all elements of $\mathbb{F}_p^*$, so does $x^{-1}$. Additionally, multiplication by $c$ simply permutes the elements, so $cx^{-1}$ iterates over all $\mathbb{F}_p^*$. Hence, $cx^{-1}-1$ iterates over $\mathbb{F}_p \backslash \{-1\}$. Summing $\chi(y)$ over all non-zero $y$ gives us $0$, but this sum is over the whole space \textbf{except} $-1$, the sum evaluates to $0 - \chi(-1) = - \chi(-1)$.
+
+\medskip
+By Euler's criterion,
+$$\chi(a) = a^{\frac{p-1}{2}} \text{ mod } p \ \ \Rightarrow \ \ \chi(-1) = (-1)^{\frac{p-1}{2}}.$$
+Overall, we have
+$$N_c = p - (-1)^{\frac{p-1}{2}}.$$
+
+If $c = 0$, then the summand is $\chi(-x^2) = \chi(-1) \cdot \chi(x^2)$. If $x = 0$, this term is $0$, while if $x$ is non-zero, then $\chi(x^2) = 1$ as it is guaranteed a residue. 
+% Hence, the sum evaluates to $(p - 1) \cdot \chi(-1)$. 
+Applying Euler's criterion once more, the number of solutions for $c = 0$ is
+$$N_0 = p + (p-1)(-1)^{\frac{p-1}{2}}.$$
+So, we have the number of solutions for an arbitrary $c$ is given by
+$$N_c = \begin{cases}
+    p + (p-1)(-1)^{\frac{p-1}{2}} & c = 0, \\
+    p - (-1)^{\frac{p-1}{2}} & c \neq 0.
+\end{cases}$$
+
+\medskip
+Since the number of solutions to $a^2 + b^2 \equiv c \text{ mod } p$ when $c \neq 0$ is bounded by $p+1$, the probability of randomly selecting $a,b$ and generating a specific $c$ is bounded by
+$$\frac{p+1}{p^2} \approx \frac{1}{p},$$
+so this process appears uniform. If $c = 0$, we expect slightly more bias: $N_0$ is bounded by $2p-1$, thus
+$$\frac{2p-1}{p^2} \approx \frac{2}{p},$$
+however in both cases this bias is negligible for large $p$.
+
+\medskip
+When $p = 2^{255}-19$, the prime that we are interested in, we have that $N_0 = 2p-1$ and $N_c = p - 1$ for non-zero $c$, which yields the same conclusion as above: the bias introduced here is negligible. Therefore, we conclude that summing two Elligator outputs is sufficient to remove any bias.
+
+
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+    \item The cofactor clearing happens separately before addition. In RFC 9380 Section 3, it is specified that this clearing happens after summation. While the result is mathematically equivalent, it should be noted that it does not exactly match the spec.
+    \item There is no domain-separating tag used when \verb+BLAKE2b+ is called, which is required by RFC 9380.  The simple-API call \verb+blake2b(out, 64, preimage, len, NULL, 0)+ leaves BLAKE2b's \verb+personal+ and \verb+salt+ parameters at their default zero, and the single in-tree call site (\verb+derive_key_image_generator+) prepends no DST string to the preimage.  Cross-protocol confusion is not exploitable today. The only caller hashes a $32$-byte \verb+public_key+, and every other Monero hash of a public key uses Keccak rather than BLAKE2b, so the input domains are already separated by hash-function family.  As a hardening recommendation before a second BLAKE2b-based hash-to-curve flavor enters the codebase, the \verb+personal+ field should be set to a unique 16-byte tag (e.g.\ \verb+"FCMP_KI_GEN_v1"+) using the \verb+blake2b_init_param+ API.
+
+\end{enumerate}
+
+\subsubsection{Edge Case Analysis}
+
+\begin{table}[htbp]
+\centering
+{\rowcolors{2}{SkyBlue!25}{CornflowerBlue!50}
+\begin{tabular}{| l | c | l|}
+\hline
+\textbf{Input} & \textbf{Behavior} \\
+\hline
+\hline
+$O = \mathcal{O}$ & Explicit check rejects. \\
+$C = \mathcal{O}$ & Explicit check rejects.\\
+Legacy Output with Torsion & Torsion cleared, if 8 torsion, rejected. \\
+Carrot Output & Torsion clearing skipped. \\
+Point with $x = 0$ & Legacy rejects when torsion clearing, \\
+& Carrot passes identity check. \\
+\hline
+\end{tabular}}
+\end{table}
+
+\subsubsection{Fuzzing Results}
+The same AFL++ campaign \verb+afl_hash_to_ec+ exercised \verb+unbiased_hash_to_ec+ for $100{,}015{,}388$ iterations with zero memory-safety findings and zero invariant violations: the harness checked both that the output decompresses as a valid Ed25519 point and that it is never the identity.  The double-cofactor-clear and the cached/extended conversions all ran cleanly under ASan; the campaign therefore covers the order-of-operations deviation from RFC 9380 \S3 noted in observation 1 and confirms it does not produce off-curve points or memory hazards.
+
+%\subsubsection[Conclusion]{Conclusion \hfill \checkmark}
+%The above function performs exactly as described mathematically, along with possessing negligible bias. It also possesses the desired collision resistance which it inherited from the \verb+BLAKE2b+ hash function. As such, we conclude that this function is fit for use. 
+
+\newpage
+\subsection{PR \#10338 - derive\_key\_image\_generator}
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={derive\_key\_image\_generator Code}, captionpos=t]{derive_key_image_generator.cpp}
+
+\begin{table}[htbp]
+\caption{derive\_key\_image\_generator Source To Spec Map}
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | c | l | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+660 & 1 & \verb+void crypto_ops::derive_key_image_generator(...)+ & Function Definition \\
+661 & 2 & \verb+if (biased)+ & Use biased generator. \\
+663 & 4 & \verb+else+ & Use unbiased generator. \\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\caption*{Located in crypto.cpp}
+\end{table}
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+    \item It appears that this function simply acts as a switch in order to preserve legacy key images.
+\end{enumerate}
+
+%\subsubsection[Conclusion]{Conclusion \hfill \checkmark}
+%As it is written above, it is our opinion the following code is fit for use.  The dispatch correctly routes Legacy outputs to the biased hash-to-point and Carrot outputs to the unbiased variant.
+
+\newpage
+\subsection{PR \#10338 - generate\_key\_image}
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={generate\_key\_image Code}, captionpos=t]{generate_key_image.cpp}
+
+\begin{table}[htbp]
+\caption{generate\_key\_image Source To Spec Map}
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | c | l | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+671 & 4 & \verb+assert(sc_check(&sec) == 0)+ & Validate secret key. \\
+672 & 5 & \verb+biased_hash_to_ec(pub, point)+ & $H_p = 8 \cdot \ell_2$(\verb+Keccak-256(K)+) \\
+673 & 6 & \verb+ge_scalarmult(&point2, &unwrap(sec), &point)+ & $I = x \cdot H_p$ \\
+674 & 7 & \verb+ge_tobytes(&image, &point2)+ & Compress key image. \\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\caption*{Located in crypto.cpp}
+\end{table}
+
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+    \item This function always uses the biased hash to ec, but this is pre-FCMP++ and Carrot only.
+\end{enumerate}
+
+\subsubsection{Fuzzing Results}
+\verb+generate_key_image+ is fuzzed transitively through its \verb+biased_hash_to_ec+ dependency by \verb+afl_hash_to_ec+ ($100{,}015{,}388$ iters, zero findings).  No dedicated harness was built for \verb+generate_key_image+ itself because it requires a valid secret scalar (asserted by \verb+sc_check+), and a fuzzer over uniformly random $32$-byte secrets would be rejected at the first line $\sim$ half the time without exercising new behavior; the deterministic \verb+ge_scalarmult+ output is instead verified by GTest with RFC-derived known-answer vectors.
+
+%\subsubsection[Conclusion]{Conclusion \hfill \checkmark}
+%As it is written above, it is our opinion the following code is fit for use.  The function correctly composes the biased hash-to-point (preserving Monero's historical key-image scheme) with \verb+sc_check+-guarded scalar multiplication.
+
+\subsection[Section Conclusion]{Section Conclusion \hfill \checkmark}
+The functions described above are implemented in a way consistent with the underlying mathematics. As such, they appear fit for use.
+
+
+\newpage
+
+\section{Converting Outputs to Tuples}
+The purpose of this section is to address the following:
+\begin{enumerate}
+    \item Verify that none of $O,I,C$ can have torsion, and contain correct identity checks, both from a cryptographic standpoint and correctly implemented coding standpoint.
+    \item Verify the claim that no output or commitment detectable as a valid receive on the Monero blockchain today (or at any point in the past) would cause \verb+output_to_tuple+ to throw.
+\end{enumerate}
+
+
+\subsection{Mathematical Overview}
+The leaf consumed by the FCMP++ Merkle tree is the triple $(O, I, C)$, where $O$ is the output public key, $I$ is the key-image generator associated with $O$, and $C$ is the Pedersen commitment to the amount.  The functions in this section take a structurally heterogeneous \verb+OutputPair+ (Legacy or Carrot; see \S 10 for the dispatch surface) and assemble the canonical $96$-byte $(O,I,C)$ tuple on the prime-order subgroup of ED25519: torsion is cleared on Legacy inputs (using \verb+get_valid_torsion_cleared_point+ from \S 6); identity points are explicitly rejected so that a single $1 - y = 0$ cannot zero every batched inversion downstream (the \verb+fe_invert(0) = 0+ Fermat artifact discussed in \S 4); and $I$ is derived from the original $O$ rather than from its torsion-cleared counterpart, in order to preserve the $1$-to-$1$ correspondence between key images and historical outputs.
+
+\subsection{PR \#10360 - output\_to\_tuple}
+\subsubsection{Functionality}
+\indent \indent \verb+output_to_tuple+ is the consumer of the five PR \#10358 dispatch helpers documented in the previous section (\verb+output_pubkey_cref+, \verb+commitment_cref+, \verb+output_checked_for_torsion+, \verb+use_biased_hash_to_point+, and \verb+output_tuple_from_bytes+).  Although the function itself is introduced as part of the same upstream commit family as the type infrastructure of PR \#10358, its analysis is most natural here, alongside \verb+output_tuple_to_pre_leaf_tuple+, since both functions belong to the leaf-construction pipeline.
+
+\lstinputlisting[language=C++, caption={output\_to\_tuple Code}, captionpos=t]{output_to_tuple.cpp}
+
+\begin{table}[htbp]
+\caption{output\_to\_tuple Source To Spec Map}
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | c | l | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+62 & 3 & \verb+output_pubkey_cref(output_pair)+ & Extract $O_{raw}$ from \verb+OutputPair+.\\
+63 & 4 & \verb+commitment_cref(output_pair)+ & Extract $C_{raw}$ from \verb+OutputPair+. \\
+68 & 9 & \verb+if (!output_checked_for_torsion(output_pair))+ & Legacy outputs need torsion clearing.\\
+&&& Carrot outputs skip.\\
+72 & 13 & \verb+get_valid_torsion_cleared_point(output_pubkey, O)+ & Clear torsion on $O_{raw}.$\\ 
+73 & 14 & \verb+get_valid_torsion_cleared_point(commitment, C)+ & Clear torsion on $C_{raw}.$  \\
+90 & 31 & \verb+if (O == crypto::EC_I) throw+& Reject identity after torsion clearing. \\
+98 & 39 & \verb+derive_key_image_generator(...)+ & $I = \verb+HashToPoint+(O_{raw})$.\\
+102 & 43 & \verb+return output_tuple_from_bytes(O, I, C)+ & Serialize $(O,I,C)$ into \verb+OutputTuple+ \\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\caption*{Located in curve\_trees.cpp}
+\end{table}
+
+\newpage
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+    \item Note that in Line 39 of the included code, the value included in the \verb+HashToPoint+ argument is the original pubkey, not the torsion cleared on computed. This is due to the torsion clearing process collapsing two possible distinct keys to the same cleared one. For example, for $T_1 \neq T_2$ torsion elements, $O_1 = P_0 + T_1$ and $O_2 = P_0 + T_2$ implies that $O_1 \neq O_2$ however, after torsion clearing, they map to the same value.
+\end{enumerate}
+
+\subsubsection{Edge Case Analysis}
+\begin{table}[htbp]
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{SkyBlue!25}{CornflowerBlue!50}
+\begin{tabular}{| p{1.8in} | p{4.3in} |}
+\hline
+\textbf{Input} & \textbf{Behavior} \\
+\hline
+\hline
+$O = \mathcal{O}$ & Explicit check rejects. \\
+$C = \mathcal{O}$ & Explicit check rejects.\\
+Legacy Output with Torsion & Torsion cleared, if 8 torsion, rejected. \\
+Carrot Output & Torsion clearing skipped. \\
+Point with $x = 0$ & Legacy rejects when torsion clearing, \\
+& Carrot passes identity check. \\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\end{table}
+
+
+\subsubsection{Fuzzing Results}
+The AFL++ harness \verb+afl_output_to_tuple+ exercised the full pipeline (\verb+output_to_tuple+ $\to$ \verb+output_tuple_to_pre_leaf_tuple+) for $801{,}817$ iterations across ASan ($308{,}443$), CMPLOG ($402{,}193$), and extended-ASan ($91{,}181$) rounds.  The CMPLOG and core ASan rounds reported zero crashes; the $96$-byte input format ($O_{raw} \| C_{raw} \|$ flags) confirmed that the explicit identity checks reject $\mathcal{O}$ for both $O$ and $C$.  The extended-ASan round recorded $12$ \verb+SIGILL+ assertion violations, all of the same non-canonical-encoding class observed in \verb+afl_torsion+/\verb+afl_wei_conv+ and triaged as input-precondition violations rather than memory-safety findings.
+
+%\subsubsection[Conclusion]{Conclusion \hfill \checkmark}
+%The function correctly composes torsion clearing, identity rejection, and the variant-aware dispatch on Carrot vs.\ legacy outputs.  In our opinion, the implementation is fit for use.
+
+\newpage
+
+\subsection{PR \#10360 - output\_tuple\_to\_pre\_leaf\_tuple}
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={output\_tuple\_to\_pre\_leaf\_tuple Code}, captionpos=t]{output_tuple_to_pre_leaf_tuple.cpp}
+
+\begin{table}[htbp]
+\caption{output\_to\_tuple Source To Spec Map}
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | c | l | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+126 & 5 & \verb+(crypto::ec_point&) o.O+ & Reinterpret 32-byte \verb+OutputTuple.O+\\
+&&&as compressed ED25519 point.\\
+132 & 11 & \verb+point_to_ed_derivatives(O, plt.O_derivatives)+ & $O \rightarrow (1 + y_O, 1 - y_O, (1-y_O) \cdot x_O)$ \\
+134 & 13 & \verb+point_to_ed_derivatives(I, plt.I_derivatives)+ & $I \rightarrow (1 + y_I, 1 - y_I, (1-y_I) \cdot x_I)$\\
+136 & 15 & \verb+point_to_ed_derivatives(C, plt.C_derivatives)+ & $C \rightarrow (1 + y_C, 1 - y_C, (1-y_C) \cdot x_C)$\\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\caption*{Located in curve\_trees.cpp}
+\end{table}
+\newpage
+
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+    \item Each \verb+point_to_ed_derivatives+ call decompresses the 32-byte point, rejects the identity and computes the three field elements. The inversions are deferred to the batch step.
+    \item On the legacy (non-Carrot) output branch, $O$ and $C$ are decompressed twice per output: once during torsion clearing inside \verb+output_to_tuple+ (via \verb+get_valid_torsion_+ \verb+cleared_point+, which calls \verb+ge_frombytes_vartime+ and then re-encodes the cleared point with \verb+ge_p3_tobytes+), and again here in \verb+point_to_ed_derivatives+.  The source itself acknowledges this with a \verb+TODO+ at \verb+curve_trees.cpp:128+.  The cost is performance only, with no correctness or security impact, but at scale (full-chain re-sync) the redundant decompressions accumulate.
+\end{enumerate}
+
+\subsubsection{Fuzzing Results}
+Inherits the \verb+afl_output_to_tuple+ campaign coverage above ($801{,}817$ iterations across ASan, CMPLOG, and extended-ASan, zero memory-safety findings).  The three \\\verb+point_to_ed_derivatives+ calls are the same routine fuzzed independently in \S 8 above; their identity-rejection branches were exercised on every $\mathcal{O}$-valued input the corpus produced.
+
+%\subsubsection[Conclusion]{Conclusion \hfill \checkmark}
+%The function applies \verb+point_to_ed_derivatives+ to each of $O$, $I$, $C$, with identity rejection load-bearing for downstream batch-inverse correctness.  In our opinion, the implementation is fit for use.
+
+\subsection[Section Conclusion]{Section Conclusion \hfill \checkmark}
+It can be seen readily that the \verb+output_to_tuple+ function explicitly checks for torsion in the $(O,I,C)$ points, as well as checking to make sure none of the points are the identity. 
+
+\newpage
+\section{Constructing the Selene Scalar}
+The purpose of this section is as follows:
+\begin{enumerate}
+\item Verify that \verb+SeleneScalar+ is the correct C representation of the corresponding Rust Object.
+\item Verify that \verb+fcmp_pp::tower_cycle::selene_scalar_from_bytes+ calls \verb+selene_scalar+ \verb+_from_bytes+ in  \verb+fcmp.h+ safely from a runtime and memory standpoint.
+\item Verify that the \verb+selene_scalar_from_bytes+ in \verb+lib.rs+ is implemented correctly from a runtime and memory standpoint and calls \verb+read_F+ in a safe manner from the same standpoint, as well as a cryptographically secure point.
+\item Verify that the Rust FFI layer is set up in a manner that is fit for production use in Monero.
+\end{enumerate}
+\subsection{PR \#10359 - selene\_scalar\_from\_bytes}
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={selene\_scalar\_from\_bytes Code}, captionpos=t]{selene_scalar_from_bytes.cpp}
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+    \item The C++ wrapper is purely a marshalling layer: it stack-allocates a \verb+SeleneScalar+, calls the Rust FFI \verb+::selene_scalar_from_bytes+ on the raw \verb+const uint8_t*+ produced by \verb+to_bytes(bytes)+, enforces \verb+r == 0+ via \verb+CHECK_FFI_RES+, and returns by value with NRVO.  Non-zero return codes propagate as a Monero exception via \verb+CHECK_AND+ \verb+_ASSERT_THROW_MES+ rather than corrupting the output. 
+    \item The C declaration \verb!struct SeleneScalar { uintptr_t _0[32 / sizeof(uintptr_t)]; }! in \verb+fcmp++.h+ is hand-maintained (the file is \verb+cp+'d into place by the build system, not regenerated by \verb+cbindgen+).  There is no \verb!static_assert(sizeof(SeleneScalar) == 32)! to catch ABI drift, even though the sibling output-pair types in \verb+fcmp_pp_types.h+ do carry such guards.  ABI consistency relies further on \verb+Cargo.toml+ patching \verb+crypto-bigint+ to a non-default \verb+c-repr+ branch; the contract is correct today but unprotected against future drift.  Adding a one-line size assertion at the C++ declaration would close the gap at zero cost.
+    \item Per audit scope, the Rust implementation of \verb+::selene_scalar_from_bytes+ in the \verb+helioselene+ crate is out of scope for this analysis; this audit verifies only the C-side FFI contract.
+\end{enumerate}
+
+\subsubsection{Edge Case Analysis}
+\begin{table}[htbp]
+\centering
+{\rowcolors{2}{SkyBlue!25}{CornflowerBlue!50}
+\begin{tabular}{| p{1.8in} | p{4.3in} |}
+\hline
+\textbf{Input} & \textbf{Behavior} \\
+\hline
+\hline
+All-zero bytes & Rust returns $0$; \verb+SeleneScalar+ holds canonical zero. \\
+All-\verb+0xFF+ bytes (encodes $2^{256}-1 \gg q$) & Rust's \verb+Ciphersuite::read_F+ rejects non-canonical encodings, returning the parse-error code $-2$; \verb+CHECK_FFI_RES+ then throws. \\
+Non-canonical $a \geq q$ & Same behaviour as above: \verb+read_F+ rejects rather than reducing. \\
+Rust returns non-zero \verb+r+ & \verb+CHECK_FFI_RES+ throws; output discarded. \\
+\hline
+\end{tabular}}
+\end{table}
+
+\subsubsection{Fuzzing Results}
+The libFuzzer harness \verb+fuzz_selene_ffi+ exercised the C/Rust FFI boundary for $1{,}500{,}000$ iterations under ASan with $0$ crashes, and $0$ round-trip violations.  The companion harness \verb+fuzz_helios_ffi+ ran an identical $1{,}500{,}000$-iteration campaign on the sibling FFI with the same clean result.  The harness exercises the deserialise-then-serialise symmetry through the \verb+CHECK_FFI_RES+ error path: any non-zero return from the Rust side (null-pointer code $-1$, parse-error code $-2$) propagates as a C++ exception via the macro, rather than corrupting the \verb+SeleneScalar+ output.  Across $3{,}000{,}000$ total iterations at the FFI boundary the campaign produced no memory hazards and no inconsistencies between the C++ and Rust sides.
+
+\subsubsection[Conclusion]{Conclusion \hfill \checkmark}
+The C wrapper correctly marshals input bytes, propagates Rust-side errors as exceptions, and returns the populated \verb+SeleneScalar+ with copy elision.  Cryptographic correctness of the conversion itself is delegated to a separate audit of the Rust crate; in our opinion, the C-side FFI is fit for use, with the caveat that a defense-in-depth \verb+static_assert+ on \verb!sizeof(SeleneScalar)! should be added before this code reaches consensus-hot paths.
+
+\newpage
+\section{ED25519 to Curve Tree}
+The purpose of this section is to verify that \verb+output_to_leaves+ is implemented correctly from a cryptographic, memory and runtime standpoint.
+
+\subsection{PR \#10360 - output\_to\_leaves}
+\subsubsection{Functionality}
+\lstinputlisting[language=C++, caption={output\_to\_leaves Code}, captionpos=t]{output_to_leaves.cpp}
+
+\begin{table}[htbp]
+\caption{output\_to\_leaves Source To Spec Map}
+\begin{adjustwidth}{-1in}{-1in}
+\centering
+{\rowcolors{2}{orange!85!yellow!50}{orange!70!yellow!35}
+\begin{tabular}{| l | c | l | l |}
+\hline
+\textbf{L1} & \textbf{L2} & \textbf{Code} & \textbf{Purpose} \\
+\hline
+\hline
+179 & 25 & \verb+pre_leaves.resize(new_outputs.size())+ & Allocate $N$ \verb|PreLeafTuple| slots \\
+180 & 26 & \verb|LEAF_CONVERT_BATCH_SIZE|=$\max\left(1,N/n_{threads} \right)$ & Divide work across threadpool \\
+200 & 46 & \verb|pre_leaves.at(j) = ...| & $(O_{raw},C_{raw}) \Rightarrow$ \verb|PreLeafTuple|\\
+202 & 48 & \verb|catch(...)| & Invalid inputs silently skipped.\\
+211 & 57 & \verb|valid_outputs.at(j) = True|& Mark valid outputs for later filtering. \\
+227 & 73 & \verb|one_plus_y_vec = make_unique<fe[]>(3N_v)| & Array of \verb|1+y| values. \\
+228 & 74 & \verb|fe_batch = make_unique<fe[]>(6N_v)|& Array for batch inversion inputs. \\
+248 & 94 & \verb|memcpy one_plus_y_vec| for $O,I,C$ & Collect $(1+y)$ for each point. \\
+252 & 98 & \verb|memcpy fe_batch| for $O,I,C$ & Collect $(1-y), (1-y)x$ for each point. \\
+269 & 115 &\verb|fe_batch_invert(batch_inv_res, fe_batch, 6N_v)| & Batch Inversion. \\
+279 & 125 &\verb|DERIVATION_BATCH_SIZE| $= \max(1, 3N_v / n_{threads})$ & Divide $3N_v$ points across threads.\\
+292 & 138 & \verb|point_idx = i * 2| & Index into \verb|batch_inv_res| and \\
+&&&\verb|flattened_leaves_out|. \\
+297 & 143 &\verb|fe_ed_derivatives_to_wei_x_y(...)| & Compute $wei_x,wei_y$ per PR 10345. \\
+305 & 151 & \verb|selene_scalar_from_bytes(wei_x)| & Converts 32 byte $wei_x$ to SeleneScalar \\
+&&& via Rust FFI.\\
+306 & 152 & \verb|selene_scalar_from_bytes(wei_y)| & Converts 32 byte $wei_y$ to SeleneScalar \\
+&&& via Rust FFI.\\
+320 & 166 & \verb|if (!valid_outputs[i]) continue| & Skip invalid outputs. \\
+324 & 170 & \verb|valid_outputs_out.emplace_back(...)| & Collect valid \verb|UnifiedOutput| entries.\\
+\hline
+\end{tabular}}
+\end{adjustwidth}
+\caption*{Located in curve\_trees.cpp}
+\end{table}
+
+\newpage
+\subsubsection{Implementation Observations}
+\begin{enumerate}
+    \item \verb+output_to_leaves+ is the public composition of \verb+output_to_tuple+ and \\\verb+output_tuple_to_pre_leaf_tuple+, followed by batch inversion (\verb+fe_batch_invert+), Weierstrass conversion (\verb+fe_ed_derivatives_to_wei_x_y+), and FFI marshalling \\ (\verb+selene_scalar_from_bytes+).  The output is a flattened vector of $6$ \verb+SeleneScalar+s per output (three points $\times$ two Weierstrass coordinates).
+    \item Per-output exceptions thrown during torsion clearing or identity rejection are caught by the threadpool lambda and the corresponding output is recorded as invalid, preserving forward progress on the rest of the batch.
+    \item Identity rejection inside \verb+point_to_ed_derivatives+ is important for correctness since a $1 - y = 0$ entry would propagate through Montgomery's trick in \verb+fe_batch_invert+ and zero out \emph{every} inversion in the batch, not just the offending one.
+\end{enumerate}
+
+\subsubsection{Edge Case Analysis}
+\begin{table}[htbp]
+\centering
+{\rowcolors{2}{SkyBlue!25}{CornflowerBlue!50}
+\begin{tabular}{| p{1.8in} | p{4.3in} |}
+\hline
+\textbf{Input} & \textbf{Behavior} \\
+\hline
+\hline
+Empty batch ($N = 0$) & No-op; returns empty leaf vector. \\
+$O$ or $C = \mathcal{O}$ in any output & \verb+output_to_tuple+ throws; output marked invalid. \\
+Legacy output with $8$-torsion & Rejected during torsion clearing. \\
+Carrot output & Torsion clearing skipped; identity check still applied. \\
+$y_P = 1$ for any $P \in \{O,I,C\}$ & Identity rejection in \verb+point_to_ed_derivatives+ throws; batch-inverse poisoning prevented. \\
+\hline
+\end{tabular}}
+\end{table}
+
+\subsubsection{Fuzzing Results}
+\verb+outputs_to_leaves+ is the public composition of \verb+output_to_tuple+ and \\\verb+output_tuple_to_pre_leaf_tuple+; it inherits the \verb+afl_output_to_tuple+ campaign coverage from \S 11 above ($801{,}817$ iterations across ASan, CMPLOG, and extended-ASan rounds, zero memory-safety findings).  A GTest end-to-end pipeline test (\verb+test_e2e_pipeline.cpp+) exercises the full leaf-construction path on representative legacy and Carrot output vectors and confirms the expected leaf encoding on each.
+
+\subsubsection[Conclusion]{Conclusion \hfill \checkmark}
+The pipeline correctly composes torsion clearing, identity rejection, batch inversion, Weierstrass conversion, and FFI scalar marshalling, with per-output exception isolation that prevents a single malformed output from corrupting the rest of the batch. In our opinion, the implementation is fit for use.
+
+\newpage
+\section{Conclusion}
+\indent \indent It is our opinion that the functions explored in this paper are nearly entirely fit for use and for deployment in Monero. Each of the audit goals have been addressed as written and answered in the affirmative in almost all cases. 
+
+\medskip
+The code does a wonderful job of accurately implementing the sound mathematical structure necessary and achieves exactly what it is described as doing.
+\end{document}
